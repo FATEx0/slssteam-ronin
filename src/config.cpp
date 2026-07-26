@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "confload.hpp"
 #include "config_default.hpp"
 
 #include "sdk/IClientApps.hpp"
@@ -14,7 +15,39 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
+
+namespace
+{
+bool readFileText(const std::string& path, std::string& out)
+{
+	std::ifstream file(path, std::ios::binary);
+	if (!file.is_open()) return false;
+	std::ostringstream contents;
+	contents << file.rdbuf();
+	out = contents.str();
+	return true;
+}
+
+bool writeFileTextAtomic(const std::string& path, const std::string& text)
+{
+	const std::string temporary = path + ".ronin-heal.tmp";
+	{
+		std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+		if (!file.is_open()) return false;
+		file << text;
+		file.flush();
+		if (!file.good()) return false;
+	}
+	std::error_code error;
+	std::filesystem::rename(temporary, path, error);
+	if (!error) return true;
+	std::filesystem::remove(temporary, error);
+	return false;
+}
+}
 
 
 std::string CConfig::getDir() const
@@ -112,19 +145,28 @@ void CConfig::setError(ELoadError err)
 bool CConfig::loadSettings(bool firstLoad)
 {
 	YAML::Node node;
-	try
+	std::string raw;
+	if (!readFileText(getPath(), raw))
 	{
-		node = YAML::LoadFile(getPath());
+		g_pLog->notifyLong("Can not read config.yaml!\nUsing defaults");
+		node = YAML::Node();
 	}
-	catch (YAML::BadFile& bf)
+	else
 	{
-		g_pLog->notifyLong("Can not read config.yaml! %s\nUsing defaults", bf.msg.c_str());
-		node = YAML::Node(); //Create empty node and let defaults kick in
-	}
-	catch (YAML::ParserException& pe)
-	{
-		g_pLog->notifyLong("Error parsing config.yaml! %s\nUsing defaults", pe.msg.c_str());
-		node = YAML::Node(); //Create empty node and let defaults kick in
+		std::string repaired;
+		const auto outcome = ConfLoad::parseWithRepair(raw, node, repaired);
+		if (outcome == ConfLoad::Outcome::Failed)
+		{
+			g_pLog->notifyLong("Error parsing config.yaml!\nUsing defaults");
+			node = YAML::Node();
+		}
+		else if (outcome == ConfLoad::Outcome::Repaired)
+		{
+			if (writeFileTextAtomic(getPath(), repaired))
+				g_pLog->notify("Config indentation was repaired on disk\n");
+			else
+				g_pLog->notify("Config indentation was repaired in memory; disk update failed\n");
+		}
 	}
 
 	__loadErrors = ELoadError::None;
