@@ -50,8 +50,8 @@ branch.
 
 - [x] Establish current AceSLS upstream as the base.
 - [x] Import pure discovery and malformed-config decision layers with tests.
-- [ ] Integrate discovery with upstream `CConfig`.
-- [ ] Make `CFileWatcher` support files, directories, and atomic replacement.
+- [x] Integrate discovery with upstream `CConfig`.
+- [x] Make `CFileWatcher` support files, directories, and atomic replacement.
 - [ ] Add runtime added-app reconciliation.
 - [ ] Port product-info provisioning and CM/PICS transport.
 - [ ] Port depot/manifest/offline layers.
@@ -60,4 +60,3 @@ branch.
 - [ ] Port parental restrictions.
 - [ ] Port the CEF port publication contract.
 - [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
-

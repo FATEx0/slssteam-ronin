@@ -46,6 +46,9 @@ public:
 	MTVariable<ELoadError> __loadErrors;
 
 	MTVariable<std::unordered_set<AppId_t>> appIds;
+	// App ids explicitly managed by stplug-in or luaappids.yaml. Installed
+	// compatibility entries remain active but must never trigger providers.
+	MTVariable<std::unordered_set<AppId_t>> managedAppIds;
 	MTVariable<std::unordered_set<AppId_t>> addedAppIds;
 	MTVariable<std::unordered_map<AppId_t, CDlcData>> dlcData;
 	MTVariable<std::unordered_map<AppId_t, uint64_t>> appTokens;

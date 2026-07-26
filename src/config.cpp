@@ -1,4 +1,5 @@
 #include "config.hpp"
+#include "config_discovery.hpp"
 #include "confload.hpp"
 #include "config_default.hpp"
 
@@ -21,6 +22,66 @@
 
 namespace
 {
+bool readFileText(const std::string& path, std::string& out);
+
+std::filesystem::path findSteamRoot()
+{
+	const char* home = std::getenv("HOME");
+	if (!home) return {};
+	const std::filesystem::path candidates[] = {
+		std::filesystem::path(home) / ".steam/steam",
+		std::filesystem::path(home) / ".steam/debian-installation",
+		std::filesystem::path(home) / ".local/share/Steam",
+	};
+	for (const auto& candidate : candidates)
+	{
+		std::error_code error;
+		if (std::filesystem::exists(candidate / "steam.sh", error))
+			return candidate;
+	}
+	return {};
+}
+
+std::unordered_set<AppId_t> discoverStPluginApps(
+    const std::filesystem::path& steamRoot)
+{
+	std::unordered_set<AppId_t> result;
+	if (steamRoot.empty()) return result;
+	std::error_code error;
+	const auto directory = steamRoot / "config/stplug-in";
+	std::filesystem::directory_iterator entries(
+	    directory, std::filesystem::directory_options::skip_permission_denied, error);
+	if (error) return result;
+	for (const auto& entry : entries)
+	{
+		if (!entry.is_regular_file(error) || error) { error.clear(); continue; }
+		const auto appId = ConfigDiscovery::appIdFromScriptName(
+		    entry.path().filename().string());
+		if (ConfigDiscovery::keepDiscoveredMainApp(appId, false))
+			result.emplace(appId);
+	}
+	return result;
+}
+
+std::unordered_set<AppId_t> loadLuaAppIds(const std::filesystem::path& path)
+{
+	std::unordered_set<AppId_t> result;
+	std::string raw;
+	if (!readFileText(path.string(), raw)) return result;
+	YAML::Node node;
+	std::string repaired;
+	if (ConfLoad::parseWithRepair(raw, node, repaired) == ConfLoad::Outcome::Failed)
+		return result;
+	const auto values = node["AdditionalApps"];
+	if (!values || !values.IsSequence()) return result;
+	for (const auto& value : values)
+	{
+		const AppId_t appId = value.as<AppId_t>(0);
+		if (appId != 0) result.emplace(appId);
+	}
+	return result;
+}
+
 bool readFileText(const std::string& path, std::string& out)
 {
 	std::ifstream file(path, std::ios::binary);
@@ -116,6 +177,14 @@ bool CConfig::init()
 	{
 		watcher = new CFileWatcher(onFileChange);
 		watcher->addFile(getPath().c_str());
+		// Watching the config directory also catches creation and atomic
+		// replacement of luaappids.yaml.
+		watcher->addFile(getDir().c_str());
+		const auto steamRoot = findSteamRoot();
+		const auto stplug = steamRoot / "config/stplug-in";
+		std::error_code error;
+		if (!steamRoot.empty() && std::filesystem::is_directory(stplug, error))
+			watcher->addFile(stplug.c_str());
 		watcher->start();
 	}
 
@@ -206,7 +275,23 @@ bool CConfig::loadSettings(bool firstLoad)
 
 	const std::lock_guard appsChanged(appsChangedMutex);
 	const auto prevAppIds = addedAppIds.get();
-	const auto _addedAppIds = getList<AppId_t>(node, "AdditionalApps");
+	const auto steamRoot = findSteamRoot();
+	const auto stplugApps = discoverStPluginApps(steamRoot);
+	const auto luaApps = loadLuaAppIds(getDir() + "/luaappids.yaml");
+	const auto legacyApps = getList<AppId_t>(node, "AdditionalApps");
+	ConfigDiscovery::InstalledApps installed;
+	if (!steamRoot.empty())
+		installed = ConfigDiscovery::scanInstalledApps(
+		    ConfigDiscovery::steamAppsRootsFor(steamRoot));
+	const auto classified = ConfigDiscovery::classifyAppIds(
+	    stplugApps, luaApps, legacyApps, installed.all, installed.accela);
+	const auto& _addedAppIds = classified.active;
+	managedAppIds = classified.managed;
+	g_pLog->info("Added-app sources: stplug-in=%zu luaappids=%zu "
+	             "legacy=%zu managed=%zu compatibility=%zu active=%zu\n",
+	             stplugApps.size(), luaApps.size(), legacyApps.size(),
+	             classified.managed.size(), classified.compatibility.size(),
+	             classified.active.size());
 
 	if (!firstLoad)
 	{
