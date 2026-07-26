@@ -187,9 +187,15 @@ static void setup()
 		}
 	}
 
-	//Since we can't statically link everything and some distros seem to respect LD_LIBRARY_PATH
-	//more or less than mine does we just force append those
-	//Hopefully this won't mess anything else up
+	// Upstream-merge note: preserve the null check in this block. Upstream
+	// historically constructed std::string(getenv("LD_LIBRARY_PATH"))
+	// directly; getenv returns nullptr when the variable is unset, and passing
+	// that to std::string is undefined behavior (typically a startup crash).
+	// If upstream later changes this block, keep either its equivalent safe
+	// handling or this guarded form while retaining the required library paths.
+	//
+	// Since we cannot statically link everything and distributions resolve
+	// these dependencies differently, append the common system library paths.
 	const char* currentLdPath = getenv("LD_LIBRARY_PATH");
 	auto ldLibPath = currentLdPath ? std::string(currentLdPath) : std::string();
 	if (!ldLibPath.empty())
