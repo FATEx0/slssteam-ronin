@@ -61,6 +61,50 @@ source.
   interface.
 - Every ported subsystem must bring its isolated regression tests.
 
+## Steam-update compatibility boundary
+
+Ronin hooks private 32-bit Steam implementation details. These are not stable
+APIs. Optional patterns deliberately turn a signature miss into a localized,
+logged feature degradation rather than aborting Ronin's complete load.
+`Pattern_t::optional`, `Patterns::init()`, and `OptionalPatternSetup` in
+`src/patterns.{hpp,cpp}` define this contract and contain the canonical
+feature-to-pattern inventory.
+
+After a Steam update, an unresolved optional pattern must be restored as
+follows:
+
+1. Use the Ronin log to identify every unresolved optional pattern and the
+   affected feature. Do not assume only one signature changed.
+2. Locate the same semantic function in the updated 32-bit
+   `steamclient.so` from its behavior, callers, constants, and data flow.
+   Searching for nearby bytes alone is not adequate.
+3. Update the signature while wildcarding volatile addresses, offsets, and
+   displacements. Do not wildcard stable structure merely to force a match.
+4. Prove the signature matches exactly once in an executable segment and
+   resolves to the intended function or instruction site.
+5. Revalidate the hook's calling convention, prologue/trampoline assumptions,
+   argument meanings, object offsets, container layout, and ownership rules.
+   If any changed, update the adapter—not just the signature.
+6. Rebuild from a clean tree, run the owning subsystem's focused regression
+   tests, and perform its controlled live acceptance test against that exact
+   Steam build.
+7. Record the tested Steam build identity and result before declaring the
+   feature supported again.
+
+The optional inventory currently covers:
+
+- Ownership/package refresh: `CUser::NotifyLicensesUpdated`,
+  `CPackageInfoCache::LoadPackage`, and `CUtlMemory::Grow`.
+- Manifest installation and reconciliation:
+  `CDepotDownloadMgr::ProcessDepotManifest`, `PrepareDepotDownload`,
+  `BuildDepotDependency`, and `EvaluateConfigChanges`.
+- Parental override: `ParentalSettingsReceived` and
+  `ParentalSignatureCheck`.
+
+Some patterns cooperate. In particular, resolving only one part of the
+manifest acquisition/planner chain is not proof that pinning works and may be
+unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
+
 ## Retained behavior
 
 1. Configuration safety and added-app discovery
@@ -97,13 +141,13 @@ source.
 - [x] Import pure discovery and malformed-config decision layers with tests.
 - [x] Integrate discovery with upstream `CConfig`.
 - [x] Make `CFileWatcher` support files, directories, and atomic replacement.
-- [ ] Add runtime added-app reconciliation.
-- [ ] Port product-info provisioning and CM/PICS transport.
-- [ ] Port depot/manifest/offline layers.
-- [ ] Port achievements/player stats.
-- [ ] Port compatibility-tool behavior.
-- [ ] Port parental restrictions.
-- [ ] Port the CEF port publication contract.
+- [x] Add runtime added-app reconciliation.
+- [x] Port product-info provisioning and CM/PICS transport.
+- [x] Port depot/manifest/offline layers.
+- [x] Port achievements/player stats.
+- [x] Port compatibility-tool behavior.
+- [x] Port parental restrictions.
+- [x] Port the CEF port publication contract.
 - [ ] Move the canonical Tsuki module manifest, settings, communication
       declarations, assets, and defaults into `module/`.
 - [ ] Add one build/test/package target that produces the native payload and
@@ -111,3 +155,10 @@ source.
 - [ ] Remove the final SLSsteam-specific manifest copy from Tsuki after generic
       external package discovery can load Ronin directly.
 - [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
+
+The retained native feature transplant was completed and compiled on
+2026-07-26. Its offline regression inventory passes. The final checkbox remains
+open because the controlled live A/B validation intentionally mutates Steam
+state and requires separate current-user authorization. Module packaging and
+manifest migration are checklist items 2 and 3, not part of the native
+transplant.

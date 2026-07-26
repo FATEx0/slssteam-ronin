@@ -1,6 +1,7 @@
 #include "patterns.hpp"
 
 #include "globals.hpp"
+#include "log.hpp"
 #include "memhlp.hpp"
 
 #include "libmem/libmem.h"
@@ -40,7 +41,13 @@ bool Patterns::init()
 	{
 		if (!pattern->find())
 		{
-			found = false;
+			if (!pattern->optional)
+				found = false;
+			else
+				g_pLog->warn(
+				    "Optional Steam pattern %s did not resolve; "
+				    "its dependent Ronin feature is disabled for this session\n",
+				    pattern->name.c_str());
 		}
 	}
 
@@ -51,6 +58,19 @@ using SigFollowMode = MemHlp::SigFollowMode;
 
 namespace Patterns
 {
+	Pattern_t ParentalSignatureCheck
+	{
+		"ParentalSignatureCheck",
+		"84 C0 75 27 8B 85 ? ? ? ? 8D 9D ? ? ? ? 83 EC 04 FF B0 82 01 00 00 8D 86 ? ? ? ? 50 53 E8 ? ? ? ?",
+		SigFollowMode::None
+	};
+	Pattern_t ParentalSettingsReceived
+	{
+		"ParentalSettingsReceived",
+		"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 81 EC 00 02 00 00 8B 45 08 8B 55 1C 8B 7D 0C",
+		SigFollowMode::None
+	};
+
 	Pattern_t TraceIPC
 	{
 		"TraceIPC",
@@ -136,6 +156,60 @@ namespace Patterns
 			"CUser::UpdateAppOwnershipTicket",
 			"E8 ? ? ? ? E9 ? ? ? ? ? ? ? ? ? ? 8D 45 ? 89 45 ? EB",
 			SigFollowMode::Relative
+		};
+		Pattern_t NotifyLicensesUpdated
+		{
+			"CUser::NotifyLicensesUpdated",
+			"55 89 E5 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 81 EC ? ? ? ? 8B 45 08 8B B8 ? ? 00 00 89 9D ? ? FF FF 85 FF",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CPackageInfoCache
+	{
+		Pattern_t LoadPackage
+		{
+			"CPackageInfoCache::LoadPackage",
+			"E8 ? ? ? ? 83 C4 10 84 C0 0F 84 ? ? ? ? 8B 95 ? ? FF FF 8B 7A 18 83 FF FF",
+			SigFollowMode::Relative
+		};
+	}
+
+	namespace CUtlMemory
+	{
+		Pattern_t Grow
+		{
+			"CUtlMemory::Grow",
+			"E8 ? ? ? ? 8B 85 ? ? FF FF 83 C4 10 8B 40 44 89 85 ? ? FF FF 83 C0 01 E9",
+			SigFollowMode::Relative
+		};
+	}
+
+	namespace CDepotDownloadMgr
+	{
+		Pattern_t ProcessDepotManifest
+		{
+			"CDepotDownloadMgr::ProcessDepotManifest",
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 4C 8B 55 1C 89 45 C0 8B 45 18 89 55 CC 89 45 C8",
+			SigFollowMode::None
+		};
+		Pattern_t PrepareDepotDownload
+		{
+			"CDepotDownloadMgr::PrepareDepotDownload",
+			"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 83 EC 60 8B 7D 08 8B 45 18 8B 55 1C FF 75 20 89 45 98 52 50 FF 75 14 89 55 9C FF 75 10 FF 75 0C 57 E8 ? ? ? ? 8B 47 4C 83 C4 20 83 F8 FF",
+			SigFollowMode::None
+		};
+		Pattern_t BuildDepotDependency
+		{
+			"CDepotDownloadMgr::BuildDepotDependency",
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 8C 04 00 00 8B 55 10 8B 7D 0C 89 85 A0 FB FF FF 8B 45 08",
+			SigFollowMode::None
+		};
+		Pattern_t EvaluateConfigChanges
+		{
+			"CDepotDownloadMgr::EvaluateConfigChanges",
+			"55 89 E5 57 56 53 81 EC DC 00 00 00 89 85 50 FF FF FF 8B 45 10 89 85 40 FF FF FF 8B 45 08 8B 40 04",
+			SigFollowMode::None
 		};
 	}
 
@@ -226,5 +300,57 @@ namespace Patterns
 	}
 
 	std::vector<Pattern_t*> patterns;
-}
 
+	struct OptionalPatternSetup
+	{
+		OptionalPatternSetup()
+		{
+			/*
+			 * Steam-update maintenance inventory
+			 * ----------------------------------
+			 * Ownership/package-cache refresh:
+			 *   CUser::NotifyLicensesUpdated
+			 *     broadcasts the rebuilt license state after package-0
+			 *     injection. Missing: warm-cache behavior remains, but a
+			 *     cold cache may not learn about injected ownership live.
+			 *   CPackageInfoCache::LoadPackage + CUtlMemory::Grow
+			 *     inject AdditionalApps into package 0 and grow its vector.
+			 *     Either missing: PackagePatch::setup() stays a no-op.
+			 *
+			 * Manifest pin/install pipeline:
+			 *   ProcessDepotManifest + PrepareDepotDownload
+			 *     keep the selected gid consistent between acquisition and
+			 *     the later per-download lookup. They are a cooperating pair.
+			 *   BuildDepotDependency
+			 *     rewrites the install-plan source gid before Steam commits it.
+			 *   EvaluateConfigChanges
+			 *     prevents the installed pinned gid from being immediately
+			 *     classified as an update against the public gid.
+			 *     Missing patterns disable only their guarded hook, but the
+			 *     complete pinning acceptance test must pass before claiming
+			 *     manifest pinning works on a new Steam build.
+			 *
+			 * Parental override:
+			 *   ParentalSettingsReceived + ParentalSignatureCheck
+			 *     rewrite settings and bypass their corresponding signature
+			 *     branch. Either missing disables the override.
+			 *
+			 * For every update: do not merely loosen bytes until a match is
+			 * found. Recover the function by behavior/callers, wildcard only
+			 * volatile operands, require one executable-segment match, inspect
+			 * its prologue/calling convention/layout, then run the feature's
+			 * focused tests and controlled live acceptance test. See
+			 * docs/RONIN.md, "Steam-update compatibility boundary".
+			 */
+			ParentalSignatureCheck.optional = true;
+			ParentalSettingsReceived.optional = true;
+			CUser::NotifyLicensesUpdated.optional = true;
+			CPackageInfoCache::LoadPackage.optional = true;
+			CUtlMemory::Grow.optional = true;
+			CDepotDownloadMgr::ProcessDepotManifest.optional = true;
+			CDepotDownloadMgr::PrepareDepotDownload.optional = true;
+			CDepotDownloadMgr::BuildDepotDependency.optional = true;
+			CDepotDownloadMgr::EvaluateConfigChanges.optional = true;
+		}
+	} optionalPatternSetup;
+}

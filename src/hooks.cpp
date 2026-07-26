@@ -26,6 +26,12 @@
 #include "feats/apps.hpp"
 #include "feats/dlc.hpp"
 #include "feats/misc.hpp"
+#include "feats/manifestcode.hpp"
+#include "feats/manifestbind.hpp"
+#include "feats/packagepatch.hpp"
+#include "feats/parental.hpp"
+#include "feats/pics.hpp"
+#include "feats/reconcilepin.hpp"
 #include "feats/fakeappid.hpp"
 #include "feats/ticket.hpp"
 
@@ -222,6 +228,7 @@ static uint32_t hkAppDataCache_BParseResponseFromMessage(void* pAppDataCache, CP
 	);
 
 	Apps::parseProductInfoFromResponse(pMsg->getBody<CMsgClientPICSProductInfoResponse>());
+	PICS::recvProductInfoResponse(pMsg->getBody<CMsgClientPICSProductInfoResponse>());
 
 	return ret;
 }
@@ -284,6 +291,7 @@ static void hkCMInterface_RecvPkt(void* pCMInterface, CNetPacket* pNetPacket)
 
 		Misc::recvMsg(pNetPacket);
 		Ticket::recvMsg(pNetPacket);
+		ManifestCode::processRecv(pNetPacket);
 	}
 
 	Hooks::CCMInterface_RecvPkt.tramp.fn(pCMInterface, pNetPacket);
@@ -375,7 +383,9 @@ static bool hkWebSocketConnection_BBuildAndAsyncSendFrame(void* pWebSocketConnec
 		}
 	}
 
-	return Hooks::CWebSocketConnection_BBuildAndAsyncSendFrame.tramp.fn(pWebSocketConnection, type, pData, dataSize);
+	return ManifestCode::hkBBuildAndAsyncSendFrame(
+	    pWebSocketConnection, static_cast<EWebSocketOpCode>(type),
+	    static_cast<uint8_t*>(pData), dataSize);
 }
 
 static gameserverdetails_t* hkSteamMatchmakingServers_GetServerDetails(void* pSteamMatchmakingServers, uint32_t handle, uint32_t serverIdx)
@@ -429,6 +439,7 @@ __attribute__((hot))
 static uint32_t hkUser_CheckAppOwnership(void* pClientUser, AppId_t appId, AppOwnershipInfo_t* pOwnershipInfo)
 {
 	const uint32_t ret = Hooks::CUser_CheckAppOwnership.tramp.fn(pClientUser, appId, pOwnershipInfo);
+	PackagePatch::tryReconcileLicenses();
 
 	//Do not log pOwnershipInfo because it gets deleted very quickly, so it's pretty much useless in the logs
 	g_pLog->once
@@ -1176,6 +1187,10 @@ bool Hooks::setup()
 		&& ISteamMatchmakingPingResponse_ServerResponded.setup(Patterns::ISteamMatchmakingPingResponse::ServerResponded, hkSteamMatchmakingPingResponse_ServerResponded);
 
 	Hooks::place();
+	PackagePatch::setup();
+	ManifestBind::setup();
+	ReconcilePin::setup();
+	Parental::setup();
 	//This is unnecessary but I'll keep this for now in case I wanna improve error checks
 	return succeeded;
 }
@@ -1219,6 +1234,11 @@ void Hooks::place()
 
 void Hooks::remove()
 {
+	Parental::remove();
+	ReconcilePin::remove();
+	ManifestBind::remove();
+	PackagePatch::remove();
+
 	//Detours
 	TraceIPC.remove();
 

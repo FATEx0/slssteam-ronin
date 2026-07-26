@@ -2,6 +2,7 @@
 
 #include "sdk/steam.hpp"
 
+#include "feats/manifestpins.hpp"
 #include "mtvar.hpp"
 #include "log.hpp"
 
@@ -56,6 +57,9 @@ public:
 	MTVariable<std::unordered_map<AppId_t, AppId_t>> fakeAppIds;
 	MTVariable<std::unordered_map<AppId_t, uint64_t>> manifestIds;
 	MTVariable<std::unordered_set<AppId_t>> depotBlacklist;
+	MTVariable<std::unordered_map<AppId_t, uint64_t>> manifestPins;
+	MTVariable<std::unordered_set<AppId_t>> lockedApps;
+	MTVariable<ManifestPins::PinMap> manifestPinsByApp;
 	MTVariable<FakeGame_t> idleStatus;
 	MTVariable<std::unordered_map<AppId_t, std::string>> gameTitles;
 	MTVariable<std::unordered_map<AppId_t, uint32_t>> subscriptionTimestamps;
@@ -63,6 +67,7 @@ public:
 	MTVariable<std::unordered_map<uint32_t, std::unordered_set<AppId_t>>> denuvoGames;
 
 	MTVariable<bool> disableFamilyLock;
+	MTVariable<bool> disableParentalRestrictions;
 	MTVariable<bool> useWhiteList;
 	MTVariable<uint32_t> maxSchemaTries;
 	MTVariable<bool> safeMode;
@@ -72,6 +77,9 @@ public:
 	MTVariable<bool> api;
 	MTVariable<bool> disableCloud;
 	MTVariable<bool> disableUpdates;
+	MTVariable<bool> achievements;
+	MTVariable<uint64_t> achievementOwnerId;
+	MTVariable<std::unordered_map<AppId_t, uint64_t>> achievementOwners;
 	MTVariable<std::string> fakeEmail;
 	MTVariable<int32_t> fakeWalletBalance;
 	MTVariable<unsigned int> logLevel;
@@ -197,6 +205,8 @@ public:
 
 	bool isAddedAppId(const AppId_t appId);
 	bool addAdditionalAppId(const AppId_t appId);
+	uint64_t getManifestPin(AppId_t depotId);
+	bool isAppLocked(AppId_t appId);
 
 	bool shouldExcludeAppId(const AppId_t appId, const bool ignoreAdditionalApps = false);
 	uint32_t getDenuvoGameOwner(const AppId_t appId);

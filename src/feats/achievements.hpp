@@ -21,6 +21,15 @@ namespace Achievements
 
 	extern std::unordered_map<AppId_t, std::unordered_set<uint64_t>> ownerBlacklist;
 
+	inline uint64_t resolveOwnerSteamId(
+	    AppId_t appId,
+	    const std::unordered_map<AppId_t, uint64_t>& perApp,
+	    uint64_t defaultOwner)
+	{
+		const auto it = perApp.find(appId);
+		return it != perApp.end() && it->second != 0 ? it->second : defaultOwner;
+	}
+
 	std::string getReviewUrl(const AppId_t appId);
 	std::unordered_set<uint64_t> getReviewersForGame(const AppId_t appId);
 

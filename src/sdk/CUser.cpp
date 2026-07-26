@@ -39,3 +39,13 @@ void CUser::updateAppOwnershipTicket(const AppId_t appId, void* pTicket, const u
 	cb.appId = appId;
 	postCallback(ECallbackType::AppOwnershipTicketReceived_t, &cb, sizeof(cb));
 }
+
+bool CUser::notifyLicensesUpdated()
+{
+	const auto address = Patterns::CUser::NotifyLicensesUpdated.address;
+	if (address == LM_ADDRESS_BAD)
+		return false;
+
+	reinterpret_cast<void(*)(void*)>(address)(this);
+	return true;
+}

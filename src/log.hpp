@@ -1,5 +1,7 @@
 #pragma once
 
+#include "usermsg.hpp"
+
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +25,9 @@ enum class LogLevel : unsigned int
 	Warn,
 	None
 };
+
+// Retained background workers suppress only their own desktop notifications.
+inline thread_local bool t_suppressNotify = false;
 
 class CLog
 {
@@ -141,6 +146,18 @@ public:
 	}
 
 	template<typename ...Args>
+	constexpr void infoOnce(const char* msg, Args... args)
+	{
+		__log(LogLevel::Once, msg, args...);
+	}
+
+	template<typename ...Args>
+	constexpr void debugOnce(const char* msg, Args... args)
+	{
+		__log(LogLevel::Once, msg, args...);
+	}
+
+	template<typename ...Args>
 	constexpr void notify(const char* msg, Args... args)
 	{
 		__log(LogLevel::NotifyShort, msg, args...);
@@ -157,6 +174,11 @@ public:
 	{
 		__log(LogLevel::Warn, msg, args...);
 	}
+
+	// Friendly catalog-backed notification used by retained Ronin subsystems.
+	// This intentionally adapts to upstream's existing notification transport;
+	// it does not replace upstream logging or introduce a second logger.
+	void notifyUser(UserMsg msg, const std::string& detail = "");
 
 	//Do not include config.hpp in this header, otherwise things will break :) (proly due to recursive inclusion)
 	static LogLevel getMinLevel();

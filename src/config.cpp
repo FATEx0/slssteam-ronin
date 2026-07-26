@@ -19,6 +19,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace
 {
@@ -241,6 +242,8 @@ bool CConfig::loadSettings(bool firstLoad)
 	__loadErrors = ELoadError::None;
 	
 	disableFamilyLock = getSetting<bool>(node, "DisableFamilyShareLock", true);
+	disableParentalRestrictions =
+	    getSetting<bool>(node, "DisableParentalRestrictions", false);
 	useWhiteList = getSetting<bool>(node, "UseWhitelist", false);
 	maxSchemaTries = getSetting<uint32_t>(node, "MaxSchemaTries", 10);
 	safeMode = getSetting<bool>(node, "SafeMode", false);
@@ -252,12 +255,17 @@ bool CConfig::loadSettings(bool firstLoad)
 	fakeWalletBalance = getSetting<int32_t>(node, "FakeWalletBalance", 0);
 	disableCloud = getSetting<bool>(node, "DisableCloud", true);
 	disableUpdates = getSetting<bool>(node, "DisableUpdates", true);
+	achievements = getSetting<bool>(node, "Achievements", true);
+	achievementOwnerId = getSetting<uint64_t>(
+	    node, "AchievementOwnerId", 76561198028121353ULL);
 	dumpInterfaceMaps = getSetting<bool>(node, "DumpClientInterfaces", false);
 	extendedLogging = getSetting<bool>(node, "ExtendedLogging", false);
 	logLevel = getSetting<unsigned int>(node, "LogLevel", 2);
 
 	//TODO: Create smart logging function to log them automatically via getSetting
 	g_pLog->info("DisableFamilyShareLock: %i\n", disableFamilyLock.get());
+	g_pLog->info("DisableParentalRestrictions: %i\n",
+	             disableParentalRestrictions.get());
 	g_pLog->info("UseWhitelist: %i\n", useWhiteList.get());
 	g_pLog->info("MaxSchemaTries: %u\n", maxSchemaTries.get());
 	g_pLog->info("SafeMode: %i\n", safeMode.get());
@@ -269,6 +277,7 @@ bool CConfig::loadSettings(bool firstLoad)
 	g_pLog->info("FakeWalletBalance: %i\n", fakeWalletBalance.get());
 	g_pLog->info("DisableCloud: %i\n", disableCloud.get());
 	g_pLog->info("DisableUpdates: %i\n", disableUpdates.get());
+	g_pLog->info("Achievements: %i\n", achievements.get());
 	g_pLog->info("DumpClientInterfaces: %i\n", dumpInterfaceMaps.get());
 	g_pLog->info("ExtendedLogging: %i\n", extendedLogging.get());
 	g_pLog->info("LogLevel: %i\n", logLevel.get());
@@ -326,6 +335,7 @@ bool CConfig::loadSettings(bool firstLoad)
 	fakeAppIds = getMap<AppId_t, AppId_t>(node, "FakeAppIds");
 	manifestIds = getMap<AppId_t, uint64_t>(node, "ManifestIds");
 	appTokens = getMap<AppId_t, uint64_t>(node, "AppTokens");
+	achievementOwners = getMap<AppId_t, uint64_t>(node, "AchievementOwners");
 	gameTitles = getMap<AppId_t, std::string>(node, "GameTitles");
 	subscriptionTimestamps = getMap<AppId_t, uint32_t>(node, "SubscriptionTimestamps");
 
@@ -432,6 +442,69 @@ bool CConfig::loadSettings(bool firstLoad)
 		setError(ELoadError::MissingKey);
 	}
 
+	// Structured manifest pins:
+	//
+	// ManifestPins:
+	//   <app id>:
+	//     locked: true
+	//     build_id: <optional uint32>
+	//     depots:
+	//       <depot id>: "<uint64 gid>"
+	//
+	// Treat the complete block as optional and every malformed entry as local:
+	// a bad app/depot/gid is skipped without discarding valid siblings or
+	// throwing out of Steam's startup path. Pins for apps no longer managed by
+	// Ronin are dropped so stale configuration cannot affect ordinary apps.
+	{
+		ManifestPins::PinMap pins;
+		const auto pinsNode = node["ManifestPins"];
+		if (pinsNode && pinsNode.IsMap())
+		{
+			for (const auto& appNode : pinsNode)
+			{
+				const auto& idNode = appNode.first;
+				const auto& body = appNode.second;
+				if (!idNode.IsScalar() || !body.IsMap())
+					continue;
+
+				const AppId_t appId = idNode.as<AppId_t>(0);
+				if (appId == 0)
+					continue;
+
+				ManifestPins::AppPins app;
+				app.locked = body["locked"].as<bool>(false);
+				app.buildId = body["build_id"].as<uint32_t>(0);
+
+				const auto depotsNode = body["depots"];
+				if (depotsNode && depotsNode.IsMap())
+				{
+					for (const auto& depotNode : depotsNode)
+					{
+						if (!depotNode.first.IsScalar()
+						    || !depotNode.second.IsScalar())
+							continue;
+
+						const AppId_t depotId =
+						    depotNode.first.as<AppId_t>(0);
+						uint64_t gid = 0;
+						if (depotId != 0
+						    && ManifestPins::parseDecimalGid(
+						        depotNode.second.as<std::string>(""), gid)
+						    && gid != 0)
+							app.depots[depotId] = gid;
+					}
+				}
+
+				pins[appId] = std::move(app);
+			}
+		}
+
+		ManifestPins::purgeOrphans(pins, addedAppIds.get());
+		manifestPinsByApp = pins;
+		manifestPins = ManifestPins::flattenDepots(pins);
+		lockedApps = ManifestPins::lockedAppSet(pins);
+	}
+
 	switch(__loadErrors.get())
 	{
 		case ELoadError::MissingKey:
@@ -451,6 +524,16 @@ bool CConfig::loadSettings(bool firstLoad)
 bool CConfig::isAddedAppId(const AppId_t appId)
 {
 	return addedAppIds.get().contains(appId);
+}
+
+uint64_t CConfig::getManifestPin(AppId_t depotId)
+{
+	return ManifestPins::getPin(manifestPins.get(), depotId);
+}
+
+bool CConfig::isAppLocked(AppId_t appId)
+{
+	return ManifestPins::isLocked(lockedApps.get(), appId);
 }
 
 bool CConfig::shouldExcludeAppId(const AppId_t appId, const bool ignoreAdditionalApps)

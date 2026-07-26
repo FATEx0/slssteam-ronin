@@ -9,20 +9,33 @@
 #include "utils.hpp"
 #include "vftableinfo.hpp"
 
+#include "feats/appinfo_provision.hpp"
+#include "feats/appinfo_vdf.hpp"
+#include "feats/cefport.hpp"
+#include "feats/depotkey.hpp"
+#include "feats/manifestid.hpp"
+#include "feats/packagepatch.hpp"
+
 #include "libmem/libmem.h"
 
 #include <chrono>
+#include <atomic>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fcntl.h>
 #include <link.h>
 #include <memory>
+#include <spawn.h>
 #include <stdexcept>
 #include <string>
 #include <sys/mman.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <vector>
 
 
 static bool cleanEnvVar(const char* varName, const char* endsWith)
@@ -83,6 +96,8 @@ static void unload()
 
 //TODO: Remove when unload() works properly since it should not be needed anymore after that
 static bool setupSuccess = false;
+static uint16_t g_cefSessionPort = 0;
+static bool g_cefKeepDefaultPort = false;
 
 static void setup()
 {
@@ -125,10 +140,60 @@ static void setup()
 		return;
 	}
 
+	// Pick one port for the complete Steam session, but publish it only when
+	// this process tree actually launches steamwebhelper. At login two Steam
+	// clients may race; publishing here would allow the losing process to
+	// overwrite Tsuki's contract with a port that never becomes live.
+	if (CefPort::deckyPresent())
+	{
+		// Decky's injector is fixed to 8080. Multiple CDP clients can share the
+		// endpoint, so preserve 8080 and remove any stale ephemeral contract.
+		g_cefKeepDefaultPort = true;
+		CefPort::removeContract(CefPort::contractPath());
+	}
+	else
+	{
+		g_cefSessionPort =
+		    CefPort::resolveSessionPortNoPersist(CefPort::contractPath());
+	}
+
+	// Steam reads appinfo.vdf before the runtime hooks below are installed.
+	// Provision missing added-app records and splice cached records into the
+	// file while the audit module is still in its pre-launch setup phase.
+	//
+	// The key and manifest catalogues must be loaded first: provisioning
+	// deliberately omits depots without a known key and uses catalogue
+	// metadata while reconstructing app-info. All three operations are
+	// idempotent, so later hook-startup imports remain safe.
+	if (const char* home = std::getenv("HOME"))
+	{
+		static const char* steamRoots[] = {
+			"/.steam/steam",
+			"/.steam/debian-installation",
+			"/.local/share/Steam",
+		};
+		for (const char* suffix : steamRoots)
+		{
+			const auto candidate = std::string(home) + suffix +
+			    "/appcache/appinfo.vdf";
+			if (!std::filesystem::exists(candidate))
+				continue;
+
+			DepotKey::importLuaScripts();
+			ManifestId::importLuaScripts();
+			AppInfoProvision::provisionAllAddedApps(candidate);
+			AppInfoVdf::injectAllCached(candidate);
+			break;
+		}
+	}
+
 	//Since we can't statically link everything and some distros seem to respect LD_LIBRARY_PATH
 	//more or less than mine does we just force append those
 	//Hopefully this won't mess anything else up
-	auto ldLibPath = std::string(getenv("LD_LIBRARY_PATH"));
+	const char* currentLdPath = getenv("LD_LIBRARY_PATH");
+	auto ldLibPath = currentLdPath ? std::string(currentLdPath) : std::string();
+	if (!ldLibPath.empty())
+		ldLibPath.append(":");
 	ldLibPath.append("/usr/lib:/usr/lib32");
 	setenv("LD_LIBRARY_PATH", ldLibPath.c_str(), true);
 
@@ -144,6 +209,15 @@ static void load()
 		return;
 	}
 
+	// la_objopen reaches this function for both steamclient.so and steamui.so.
+	// The detours below must be installed exactly once per process. A local
+	// static alone is insufficient because glibc can instantiate an LD_AUDIT
+	// object in multiple link-map namespaces, giving each copy separate
+	// statics while they still patch the same steamclient text.
+	static bool loadDone = false;
+	if (loadDone)
+		return;
+
 	//This should never happen, but better be safe than sorry in case I refactor someday
 	if (!LM_FindModule("steamclient.so", &g_modSteamClient))
 	{
@@ -155,6 +229,31 @@ static void load()
 		unload();
 		return;
 	}
+
+	// Claim the process-wide pass only after both target modules exist, so an
+	// early la_objopen call can retry. The kernel-held advisory lock is shared
+	// by all auditor namespaces and disappears automatically with the process.
+	{
+		char lockPath[64];
+		std::snprintf(lockPath, sizeof(lockPath),
+		              "/tmp/.slssteam-ronin.load.%d", getpid());
+		const int lockFd = open(lockPath, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+		if (lockFd >= 0)
+		{
+			if (flock(lockFd, LOCK_EX | LOCK_NB) != 0)
+			{
+				g_pLog->info(
+				    "load: another auditor namespace already installed hooks\n");
+				close(lockFd);
+				return;
+			}
+			// Keep the winning descriptor open for process lifetime so the
+			// lock remains held. O_CLOEXEC prevents inheritance.
+		}
+		// Failure to create a /tmp guard must not disable the module. The
+		// namespace-local guard still prevents ordinary duplicate calls.
+	}
+	loadDone = true;
 
 	const auto path = std::filesystem::path(g_modSteamClient.path);
 	const auto dir = path.parent_path();
@@ -211,6 +310,19 @@ static void load()
 	SLSAPI::init();
 	Decompiler::cleanUp();
 
+	DepotKey::onStartup();
+	ManifestId::importLuaScripts();
+
+	{
+		const auto added = g_config.addedAppIds.get();
+		std::vector<uint32_t> ids(added.begin(), added.end());
+		const auto dlcIds = AppInfoProvision::collectDlcAppIdsForAddedApps();
+		PackagePatch::setExtraAppIds(dlcIds);
+		ids.insert(ids.end(), dlcIds.begin(), dlcIds.end());
+		if (!ids.empty())
+			PackagePatch::injectIntoPackage0(ids);
+	}
+
 	if (g_config.notifyInit.get())
 	{
 		const auto now = std::chrono::time_point{std::chrono::system_clock::now()};
@@ -228,22 +340,239 @@ static void load()
 	}
 }
 
-unsigned int la_version(unsigned int)
+namespace
+{
+using ExecvFn = int (*)(const char*, char* const[]);
+using ExecveFn = int (*)(const char*, char* const[], char* const[]);
+using SpawnFn = int (*)(pid_t*, const char*, const posix_spawn_file_actions_t*,
+                        const posix_spawnattr_t*, char* const[], char* const[]);
+
+ExecvFn g_realExecv = nullptr;
+ExecvFn g_realExecvp = nullptr;
+ExecveFn g_realExecve = nullptr;
+ExecveFn g_realExecvpe = nullptr;
+SpawnFn g_realSpawn = nullptr;
+SpawnFn g_realSpawnp = nullptr;
+
+// Return a rewritten argv copy only when Steam is launching a command that
+// contains the CEF remote-debugging switch. The process is about to exec, so
+// the successful-path allocation intentionally lives until exec replaces the
+// image. On exec failure libc returns to us; freeRewrittenArgv then releases
+// only the strings this function duplicated.
+struct RewrittenArgv
+{
+	char** argv = nullptr;
+	std::vector<bool> owned;
+};
+
+RewrittenArgv rewriteCefArgv(char* const argv[])
+{
+	if (!argv || g_cefKeepDefaultPort)
+		return {};
+
+	int count = 0;
+	bool containsSwitch = false;
+	for (; argv[count]; ++count)
+	{
+		const char* match = std::strstr(argv[count], CefPort::kSwitchPrefix);
+		if (match
+		    && std::isdigit(static_cast<unsigned char>(
+		        match[std::strlen(CefPort::kSwitchPrefix)])))
+			containsSwitch = true;
+	}
+	if (!containsSwitch)
+		return {};
+
+	const uint16_t port = g_cefSessionPort != 0
+	    ? g_cefSessionPort
+	    : CefPort::resolveSessionPortNoPersist(CefPort::contractPath());
+	if (port == 0)
+		return {};
+
+	static std::atomic<bool> published{false};
+	bool expected = false;
+	if (published.compare_exchange_strong(expected, true)
+	    && !CefPort::writePortFile(CefPort::contractPath(), port))
+	{
+		published.store(false);
+	}
+	else if (!expected)
+	{
+		if (g_pLog)
+			g_pLog->info("CEF: published debug port %u to %s\n",
+			             port, CefPort::contractPath().c_str());
+	}
+
+	RewrittenArgv result;
+	result.argv = static_cast<char**>(
+	    std::calloc(static_cast<std::size_t>(count + 1), sizeof(char*)));
+	if (!result.argv)
+		return {};
+	result.owned.resize(static_cast<std::size_t>(count), false);
+
+	for (int i = 0; i < count; ++i)
+	{
+		auto [rewritten, changed] =
+		    CefPort::rewritePortArg(argv[i], port);
+		if (changed)
+		{
+			result.argv[i] = ::strdup(rewritten.c_str());
+			if (!result.argv[i])
+			{
+				for (int j = 0; j < i; ++j)
+					if (result.owned[static_cast<std::size_t>(j)])
+						std::free(result.argv[j]);
+				std::free(result.argv);
+				return {};
+			}
+			result.owned[static_cast<std::size_t>(i)] = true;
+		}
+		else
+		{
+			result.argv[i] = argv[i];
+		}
+	}
+
+	if (g_pLog)
+		g_pLog->info("CEF: rewrote remote-debugging port to %u\n", port);
+	return result;
+}
+
+void freeRewrittenArgv(RewrittenArgv& rewritten)
+{
+	if (!rewritten.argv)
+		return;
+	for (std::size_t i = 0; i < rewritten.owned.size(); ++i)
+		if (rewritten.owned[i])
+			std::free(rewritten.argv[i]);
+	std::free(rewritten.argv);
+	rewritten.argv = nullptr;
+}
+
+int cefExecv(const char* path, char* const argv[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result = g_realExecv(path, rewritten.argv ? rewritten.argv : argv);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+
+int cefExecvp(const char* file, char* const argv[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result = g_realExecvp(file, rewritten.argv ? rewritten.argv : argv);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+
+int cefExecve(const char* path, char* const argv[], char* const envp[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result =
+	    g_realExecve(path, rewritten.argv ? rewritten.argv : argv, envp);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+
+int cefExecvpe(const char* file, char* const argv[], char* const envp[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result =
+	    g_realExecvpe(file, rewritten.argv ? rewritten.argv : argv, envp);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+
+int cefSpawn(pid_t* pid, const char* path,
+             const posix_spawn_file_actions_t* actions,
+             const posix_spawnattr_t* attributes,
+             char* const argv[], char* const envp[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result = g_realSpawn(
+	    pid, path, actions, attributes,
+	    rewritten.argv ? rewritten.argv : argv, envp);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+
+int cefSpawnp(pid_t* pid, const char* file,
+              const posix_spawn_file_actions_t* actions,
+              const posix_spawnattr_t* attributes,
+              char* const argv[], char* const envp[])
+{
+	auto rewritten = rewriteCefArgv(argv);
+	const int result = g_realSpawnp(
+	    pid, file, actions, attributes,
+	    rewritten.argv ? rewritten.argv : argv, envp);
+	freeRewrittenArgv(rewritten);
+	return result;
+}
+}
+
+extern "C" uintptr_t la_symbind32(
+    Elf32_Sym* symbol, __attribute__((unused)) unsigned int index,
+    __attribute__((unused)) uintptr_t* referenceCookie,
+    __attribute__((unused)) uintptr_t* definitionCookie,
+    __attribute__((unused)) unsigned int* flags, const char* name)
+{
+	const auto original = static_cast<uintptr_t>(symbol->st_value);
+	if (!name)
+		return original;
+
+	if (std::strcmp(name, "execv") == 0)
+	{
+		if (!g_realExecv) g_realExecv = reinterpret_cast<ExecvFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefExecv);
+	}
+	if (std::strcmp(name, "execvp") == 0)
+	{
+		if (!g_realExecvp) g_realExecvp = reinterpret_cast<ExecvFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefExecvp);
+	}
+	if (std::strcmp(name, "execve") == 0)
+	{
+		if (!g_realExecve) g_realExecve = reinterpret_cast<ExecveFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefExecve);
+	}
+	if (std::strcmp(name, "execvpe") == 0)
+	{
+		if (!g_realExecvpe) g_realExecvpe = reinterpret_cast<ExecveFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefExecvpe);
+	}
+	if (std::strcmp(name, "posix_spawn") == 0)
+	{
+		if (!g_realSpawn) g_realSpawn = reinterpret_cast<SpawnFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefSpawn);
+	}
+	if (std::strcmp(name, "posix_spawnp") == 0)
+	{
+		if (!g_realSpawnp) g_realSpawnp = reinterpret_cast<SpawnFn>(original);
+		return reinterpret_cast<uintptr_t>(&cefSpawnp);
+	}
+	return original;
+}
+
+extern "C" unsigned int la_version(unsigned int)
 {
 	return LAV_CURRENT;
 }
 
-unsigned int la_objopen(struct link_map *map, __attribute__((unused)) Lmid_t lmid, __attribute__((unused)) uintptr_t *cookie)
+extern "C" unsigned int la_objopen(struct link_map *map, __attribute__((unused)) Lmid_t lmid, __attribute__((unused)) uintptr_t *cookie)
 {
-	if (std::string(map->l_name).ends_with("/steamclient.so") || std::string(map->l_name).ends_with("/steamui.so"))
+	if (map && map->l_name
+	    && (std::string(map->l_name).ends_with("/steamclient.so")
+	        || std::string(map->l_name).ends_with("/steamui.so")))
 	{
+		if (!setupSuccess)
+			setup();
 		load();
 	}
 
-	return 0;
+	return LA_FLG_BINDFROM | LA_FLG_BINDTO;
 }
 
-void la_preinit(__attribute__((unused)) uintptr_t *cookie)
+extern "C" void la_preinit(__attribute__((unused)) uintptr_t *cookie)
 {
 	setup();
 }

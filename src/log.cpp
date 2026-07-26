@@ -33,6 +33,14 @@ bool CLog::shouldNotify()
 	return g_config.notifications.get();
 }
 
+void CLog::notifyUser(UserMsg msg, const std::string& detail)
+{
+	const UiMessage ui = messageFor(msg, Lang::English);
+	const std::string body = substituteDetail(ui.body, detail);
+	info("notifyUser: %s\n", body.c_str());
+	notifyLong("%s", body.c_str());
+}
+
 CLog* CLog::createDefaultLog()
 {
 	const char* home = getenv("HOME");

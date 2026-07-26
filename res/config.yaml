@@ -24,6 +24,9 @@
 #Disables Family Share license locking for self and others
 DisableFamilyShareLock: yes
 
+#Locally unlocks Steam areas restricted by parental controls. Requires restart.
+DisableParentalRestrictions: no
+
 #Switches to whitelist instead of the default blacklist
 UseWhitelist: no
 
@@ -55,6 +58,16 @@ FakeAppIds:
 #Override Depot manifest IDs
 #Use this to download older game versions or to lock a game to a specific version
 ManifestIds:
+
+#Structured manifest locks maintained by Ronin. Manifest gids are quoted
+#decimal strings because they may exceed YAML's portable integer range.
+#ManifestPins:
+#  123456:
+#    locked: true
+#    build_id: 123
+#    depots:
+#      123457: "1234567890123456789"
+ManifestPins:
 
 #Never download these depots
 DepotBlacklist:
@@ -104,6 +117,14 @@ DisableCloud: yes
 #Only works for unowned games, since those do not get any depots from CUserAppManager::BuildDepotDependency.
 #For owned games use ManifestIds
 DisableUpdates: yes
+
+#Expose achievement and player-stat data for added games.
+Achievements: yes
+
+#Default Steam account used as the schema/stat owner when an added game is not
+#owned by the current account. Per-app entries below override this value.
+AchievementOwnerId: 76561198028121353
+AchievementOwners:
 
 #Changes your account's E-Mail clientsided. Leave blank to disable
 FakeEmail: ""

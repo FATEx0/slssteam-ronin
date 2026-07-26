@@ -16,6 +16,27 @@ public:
 	const MemHlp::SigFollowMode followMode;
 	std::vector<uint8_t> prologue;
 
+	/*
+	 * Steam-internal signatures are a compatibility boundary, not an ABI.
+	 *
+	 * A required pattern failing makes Patterns::init() reject the complete
+	 * load. An optional pattern failing must instead leave address set to
+	 * LM_ADDRESS_BAD; its owning feature must check that value and become a
+	 * safe no-op. This lets an unrelated Steam update degrade one Ronin
+	 * feature without taking down every SLSsteam feature.
+	 *
+	 * "optional" does not mean "unimportant" or "automatically compatible".
+	 * After a Steam update, restore a failed feature by locating the same
+	 * semantic function in the updated 32-bit steamclient.so, updating the
+	 * signature, proving it has exactly one match, and revalidating the
+	 * calling convention and every object/data-layout assumption made by the
+	 * hook. A byte-pattern update alone is not sufficient proof.
+	 *
+	 * Keep the feature-to-pattern inventory beside OptionalPatternSetup in
+	 * patterns.cpp and the full procedure in docs/RONIN.md synchronized.
+	 */
+	bool optional = false;
+
 	lm_address_t address;
 	lm_module_t* module;
 
@@ -28,6 +49,8 @@ public:
 
 namespace Patterns
 {
+	extern Pattern_t ParentalSignatureCheck;
+	extern Pattern_t ParentalSettingsReceived;
 	extern Pattern_t TraceIPC;
 
 	namespace CAPIJob
@@ -60,6 +83,25 @@ namespace Patterns
 		extern Pattern_t GetSubscribedApps;
 		extern Pattern_t PostCallback;
 		extern Pattern_t UpdateAppOwnershipTicket;
+		extern Pattern_t NotifyLicensesUpdated;
+	}
+
+	namespace CPackageInfoCache
+	{
+		extern Pattern_t LoadPackage;
+	}
+
+	namespace CUtlMemory
+	{
+		extern Pattern_t Grow;
+	}
+
+	namespace CDepotDownloadMgr
+	{
+		extern Pattern_t ProcessDepotManifest;
+		extern Pattern_t PrepareDepotDownload;
+		extern Pattern_t BuildDepotDependency;
+		extern Pattern_t EvaluateConfigChanges;
 	}
 
 	namespace CUserAppManager

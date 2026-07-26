@@ -82,4 +82,5 @@ public:
 
 	void postCallback(const ECallbackType type, void* pCallback, const uint32_t callbackSize);
 	void updateAppOwnershipTicket(const AppId_t appId, void* pTicket, const uint32_t len);
+	bool notifyLicensesUpdated();
 };
