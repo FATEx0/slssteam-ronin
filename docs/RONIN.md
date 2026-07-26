@@ -4,6 +4,51 @@ Ronin is an upstream-first SLSsteam variant for Tsuki. Its base is
 `AceSLS/SLSsteam`; `slsteam-moon` is a behavioral reference, not the base
 branch.
 
+## Repository ownership and layout
+
+Ronin is the single source repository for both the native fork and its complete
+Tsuki module package. The module manifest, assets, default configuration,
+packaging logic, tests, and compiled payload release must not be maintained in
+a second repository.
+
+Keep AceSLS's source layout at the repository root so upstream commits retain
+their original paths and can be merged with minimal conflicts:
+
+```text
+slssteam-ronin/
+├── src/                       # AceSLS core plus Ronin feature patches
+├── include/
+├── lib/
+├── Makefile
+├── module/
+│   ├── module.json            # canonical Tsuki module specification
+│   ├── settings.json          # when the split module format is finalized
+│   ├── communication.json     # when the split module format is finalized
+│   ├── assets/
+│   │   ├── icon.*
+│   │   └── banner.*
+│   ├── config/
+│   │   └── config.yaml
+│   └── payload/               # populated by the module packaging target
+│       ├── SLSsteam.so
+│       └── library-inject.so
+├── scripts/
+│   └── package-tsuki-module.sh
+├── build/                     # ignored, intermediate compiler output
+└── dist/                      # ignored, complete installable module archives
+```
+
+The native build and module packaging must be one pipeline: compile and test
+the exact core revision, stage its artifacts into `module/payload`, validate
+the module specification, and archive that same staged tree. A release must
+never combine a manifest from one revision with a binary from another.
+
+Tsuki may retain generic loader/schema code, but SLSsteam-specific metadata and
+configuration declarations currently living in Tsuki must migrate here once
+external package discovery is ready. During migration, generated copies in
+Tsuki must be treated as compatibility outputs, not an independently edited
+source.
+
 ## Rules
 
 - Preserve upstream's decompiler, VFT-index, SDK, and hook-resolution design.
@@ -59,4 +104,10 @@ branch.
 - [ ] Port compatibility-tool behavior.
 - [ ] Port parental restrictions.
 - [ ] Port the CEF port publication contract.
+- [ ] Move the canonical Tsuki module manifest, settings, communication
+      declarations, assets, and defaults into `module/`.
+- [ ] Add one build/test/package target that produces the native payload and
+      complete self-contained Tsuki module from the same revision.
+- [ ] Remove the final SLSsteam-specific manifest copy from Tsuki after generic
+      external package discovery can load Ronin directly.
 - [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
