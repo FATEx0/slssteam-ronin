@@ -17,7 +17,8 @@
         "pins.clear",
         "pins.history.import",
         "pins.history.list",
-        "pins.history.resolve"
+        "pins.history.resolve",
+        "tsuki.steam.app.validate"
       ]
     }
   ]

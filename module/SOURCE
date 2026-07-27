@@ -41,3 +41,9 @@ not required in the Lua-derived anchor: stplug-in files supply decryption keys,
 not a complete Steam depot topology. A shared history must instead be declared
 by the root app and cover every root-build interval. It does not claim coverage
 before SteamDB's first available build or across pages that failed to load.
+
+The hosted Game Builds page exposes only whole-app build selection. It resolves
+the selected build to its complete internal depot map, persists the lock, then
+uses the declared `tsuki.steam.app.validate` host import to ask Steam to apply
+the change. Selecting Live removes the lock and validates back to Steam's
+public build. SteamDB history JSON remains an explicit page-level import.

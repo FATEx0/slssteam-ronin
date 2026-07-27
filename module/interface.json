@@ -9,7 +9,13 @@
       "carrier": "unix-socket"
     }
   ],
-  "imports": [],
+  "imports": [
+    {
+      "id": "tsuki.steam.app.validate",
+      "version": "1",
+      "required": true
+    }
+  ],
   "exports": [
     { "id": "pins.list", "component": "control" },
     { "id": "pins.set", "component": "control" },
