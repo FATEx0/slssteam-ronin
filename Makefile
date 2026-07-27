@@ -4,6 +4,7 @@
 #Force g++ cause clang crashes on some hooks
 CXX := g++
 STEAMCLIENT ?= $(HOME)/.local/share/Steam/ubuntu12_32/steamclient.so
+TSUKI_ROOT ?=
 
 libs := $(wildcard lib/*.a)
 srcs := $(shell find src/ -type f -iname "*.cpp")
@@ -44,6 +45,16 @@ ronin-module: audit-libs
 	cp bin/ronin-control module/payload/ronin-control
 	mkdir -p module/assets/steamdb-history-extension
 	cp tools/steamdb-history-extension/* module/assets/steamdb-history-extension/
+
+deploy-tsuki-module: ronin-module
+	@test -n "$(TSUKI_ROOT)" || \
+		{ echo "usage: make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
+	sh scripts/deploy-tsuki-module.sh "$(TSUKI_ROOT)"
+
+rollback-tsuki-module:
+	@test -n "$(TSUKI_ROOT)" || \
+		{ echo "usage: make rollback-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
+	sh scripts/deploy-tsuki-module.sh --rollback "$(TSUKI_ROOT)"
 
 test-manifestpin-patterns:
 	g++ -std=c++20 tools/test_manifestpin_patterns.cpp \
@@ -145,5 +156,6 @@ build: audit-libs tools
 rebuild: clean build
 release: rebuild zips
 
-.PHONY: audit-libs ronin-module test-manifestpin-patterns \
-	test-depotquarantine-patterns tools build clean rebuild zips
+.PHONY: audit-libs ronin-module deploy-tsuki-module rollback-tsuki-module \
+	test-manifestpin-patterns test-depotquarantine-patterns tools build clean \
+	rebuild zips

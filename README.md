@@ -74,6 +74,25 @@ Build the complete staged module:
 make ronin-module
 ```
 
+Deploy that exact package into a Tsuki checkout:
+
+```sh
+make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki
+```
+
+Deployment copies into a temporary directory beneath Tsuki's module root,
+validates it with that checkout's Ronin SDK, and then installs the complete
+directory. The previous package is retained in
+`<tsuki-root>/.ronin-rollback/slsteam`, outside module discovery, as the single
+rollback revision.
+
+Restore that revision—and retain the displaced current package as the new
+rollback slot—with:
+
+```sh
+make rollback-tsuki-module TSUKI_ROOT=/path/to/tsuki
+```
+
 The current Steam client pattern checks are:
 
 ```sh

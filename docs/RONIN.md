@@ -119,10 +119,13 @@ slssteam-ronin/
 └── dist/                      # ignored, complete installable module archives
 ```
 
-The native build and module packaging must be one pipeline: compile and test
-the exact core revision, stage its artifacts into `module/payload`, validate
-the module specification, and archive that same staged tree. A release must
-never combine a manifest from one revision with a binary from another.
+The native build and module packaging are one pipeline: compile the exact core
+revision and stage its artifacts into `module/payload`. Deployment through
+`make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki` copies the complete package
+into a temporary directory under Tsuki's module root, validates it with that
+checkout's Ronin SDK, installs the directory, and retains one rollback revision
+outside discovery. A release must never combine a manifest from one revision
+with a binary from another.
 
 Tsuki may retain generic loader/schema code, but SLSsteam-specific metadata and
 configuration declarations currently living in Tsuki must migrate here once
@@ -235,8 +238,8 @@ unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
       complete self-contained Tsuki module from the same revision.
 - [x] Add a package-owned Ronin control companion and hosted Manifest Pins
       page; Tsuki contributes only generic component/view hosting.
-- [ ] Replace Tsuki's installed compatibility copy with external package
-      discovery or an explicit package installation operation.
+- [x] Replace the manually maintained Tsuki compatibility copy with an explicit
+      validated package deployment operation and one rollback revision.
 - [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
 
 The retained native feature transplant was completed and compiled on
