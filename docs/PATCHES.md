@@ -124,9 +124,9 @@ integration.
 **Implementation**
 
 - Initial manifest infrastructure in `76d9d88`
-- Current worktree changes in `manifestbind`, `manifeststore`,
-  `reconcilepin`, manifest decryption, and Ronin control
-- The finalized revision must replace this worktree note when committed
+- `bfd5d21` — target-only planner redirection, archived manifest
+  normalization/storage, historical build resolution, and Ronin control/UI
+  integration
 
 **Acceptance**
 
@@ -213,4 +213,3 @@ engine and avoid importing Moon wrapper/desktop code.
 
 Retire the CEF contract only if the standardized Ronin host interface provides
 an equivalent declaration and runtime channel.
-
