@@ -231,6 +231,7 @@ this ecosystem's bad-key failure from an ordinary transient content failure.
 
 **Implementation**
 
+- `fa57817` — Ronin adaptation and regression coverage
 - Adapted from `swwayps/slsteam-moon` commit `1022c9f`
 - `src/feats/depotquarantine.*` — optional callback observation and policy
 - `src/feats/depotquarantine_store.hpp` — key-bound persistent decisions

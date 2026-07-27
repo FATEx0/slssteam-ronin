@@ -1,5 +1,5 @@
 Repository: https://github.com/FATEx0/slssteam-ronin
-Commit: bfd5d219cd7882e3d270e5416ab67214da5d367a
+Commit: fa5781781e4133ac360b44f2de9896401a4ea776
 Working-tree stability delta:
 - App-info provisioning runs in the package-contained `sls-prelaunch`
   executable before Steam starts. Running it from the rtld-audit callback
@@ -11,12 +11,15 @@ Working-tree stability delta:
 - ReconcilePin redirects only EvaluateConfigChanges' direct target-vector
   builder call. The earlier shared-builder trampoline crashed a Steam worker
   thread and must not be restored during an upstream merge.
+- Managed DLC quarantine observes two optional, uniquely resolved chunk
+  callbacks and filters only the target plan/package-0 injection. It must never
+  be broadened to the active/public comparison path.
 
 Packaged artifacts:
 
-b2b688bd698af3d5fdd0f8a8b2b6f1819962094710fac7535bf756eeac93e292  payload/SLSsteam.so
+d6cf6626e283f90ea9adf549b4395be481f49493179346a70d9d884ff4e0c103  payload/SLSsteam.so
 f2758562bddf8ff4447afe78988c54cde2791518fecf3d2a7bed290b4442e06b  payload/library-inject.so
-52c86a865950d9a35004c39e230be6f5bb0c07b7fd78ac027ec14fddf4954af5  payload/sls-prelaunch
+8b0bb56399d9bc281a04d45ff25ce7c70153c9d6c3451ff6d76f2c7170d71f9b  payload/sls-prelaunch
 4741937bc087f392147711128d6c215d0ed7bf669f058e82f8ffddaf856f80e4  payload/ronin-control
 
 These hashes document the built-in source snapshot. They are not a substitute
