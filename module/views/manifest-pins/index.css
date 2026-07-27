@@ -1,0 +1,50 @@
+:root { color-scheme: dark; font: 14px "Motiva Sans", Arial, sans-serif; color: #d6d7d8; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #25282e; }
+.manifest-pins-page { min-height: 100vh; padding: 14px 16px 28px; }
+h1 { margin: 0 0 6px; color: #fff; font-size: 22px; }
+h2 { margin: 22px 0 10px; color: #fff; font-size: 16px; }
+p { margin: 0; color: #8f98a0; line-height: 1.45; }
+.intro { margin-bottom: 18px; }
+.pin-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px;
+  border-radius: 7px; background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); }
+.pin-editor-shell { max-height: 0; overflow: hidden; opacity: 0;
+  transition: max-height 180ms ease, opacity 140ms ease, margin-top 180ms ease; }
+.pin-editor-shell.open { max-height: 420px; margin-top: 12px; opacity: 1; }
+.pin-editor { background: rgba(0,0,0,.22); }
+.build-control { display: grid; gap: 7px; }
+.editor-actions { display: flex; gap: 8px; }
+input, select, textarea, button { font: inherit; }
+input, select, textarea { width: 100%; padding: 9px 10px; border: 1px solid #3d4450; border-radius: 4px;
+  background: #1b1e24; color: #fff; outline: none; }
+input:focus, select:focus, textarea:focus { border-color: #1a9fff; }
+input[hidden] { display: none; }
+textarea { grid-column: 1 / -1; min-height: 90px; resize: vertical; font-family: monospace; }
+.locked { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; color: #b8bcbf; }
+.locked input { width: auto; }
+button { padding: 8px 13px; border-radius: 4px; border: 1px solid rgba(255,255,255,.14);
+  background: transparent; color: #d6d7d8; cursor: pointer; }
+button:hover { background: rgba(255,255,255,.07); color: #fff; }
+button.primary { justify-self: start; background: #1a9fff; border-color: #1a9fff; color: #fff; }
+button.danger { color: #e88a8a; border-color: rgba(236,92,92,.35); }
+button:disabled { opacity: .5; cursor: default; }
+.message { align-self: center; color: #ec7b7b; }
+.card-message:empty { display: none; }
+.card-message { margin-top: 8px; text-align: right; }
+.pin-list { display: grid; gap: 10px; margin-top: 14px; }
+.pin-card { padding: 13px 14px; border-radius: 6px; background: rgba(0,0,0,.14);
+  border: 1px solid rgba(255,255,255,.07); }
+.pin-title { display: flex; align-items: center; justify-content: space-between; color: #fff; font-size: 16px; }
+.game-summary { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.game-art { width: 120px; height: 45px; flex: 0 0 auto; border-radius: 3px; object-fit: cover;
+  background: #1b1e24; }
+.pin-title strong, .pin-title small { display: block; }
+.pin-title small { margin-top: 3px; color: #8f98a0; font-size: 11px; font-weight: 400; }
+.state { padding: 3px 8px; border-radius: 10px; background: #303640; color: #aeb5bc; font-size: 11px; }
+.locked-state { background: #12344a; color: #66c0f4; }
+.build { color: #8f98a0; }
+.depots { display: grid; gap: 5px; }
+code { padding: 5px 7px; border-radius: 3px; background: #1b1e24; color: #c7d5e0; }
+.muted { color: #727b84; font-size: 12px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 11px; }
+.empty { padding: 24px; text-align: center; color: #8f98a0; }

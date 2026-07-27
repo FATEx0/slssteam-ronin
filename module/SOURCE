@@ -1,0 +1,39 @@
+Repository: /home/fatex0/slssteam-ronin
+Commit: bfd5d219cd7882e3d270e5416ab67214da5d367a
+Working-tree stability delta:
+- App-info provisioning runs in the package-contained `sls-prelaunch`
+  executable before Steam starts. Running it from the rtld-audit callback
+  reproduced allocator corruption; the standalone phase completed cleanly.
+- PackagePatch, ManifestBind, ReconcilePin, and Parental are enabled as
+  optional fail-closed adapters. On Steam build 1784778118 all patterns
+  resolved, both libraries mapped, package expansion and parental rewriting
+  were exercised, and a two-minute SLS-only launch soak remained stable.
+- ReconcilePin redirects only EvaluateConfigChanges' direct target-vector
+  builder call. The earlier shared-builder trampoline crashed a Steam worker
+  thread and must not be restored during an upstream merge.
+
+Packaged artifacts:
+
+b2b688bd698af3d5fdd0f8a8b2b6f1819962094710fac7535bf756eeac93e292  payload/SLSsteam.so
+f2758562bddf8ff4447afe78988c54cde2791518fecf3d2a7bed290b4442e06b  payload/library-inject.so
+52c86a865950d9a35004c39e230be6f5bb0c07b7fd78ac027ec14fddf4954af5  payload/sls-prelaunch
+4741937bc087f392147711128d6c215d0ed7bf669f058e82f8ffddaf856f80e4  payload/ronin-control
+
+These hashes document the built-in source snapshot. They are not a substitute
+for Ronin's deferred staged third-party installer and provenance database.
+
+Manifest history resolution uses the optional browser helper under
+`assets/steamdb-history-extension/`. The helper exports only information
+rendered by SteamDB in an explicitly opened browser session: build transitions,
+all rendered depot sections and their categories/ownership/descriptions/Size/DL
+values, branches, DLC relationships, raw depot change events, and targeted
+per-depot manifest histories for shared/redistributable payloads.
+`ronin-control` treats that file as an untrusted observation: it anchors the
+newest build to Steam's current local depot map, verifies every transition
+while walking backwards, and installs the cache atomically only if the entire
+observed chain joins. DLC and shared releases inside a base-build interval
+attach to its preceding build. Shared/redistributable depots are deliberately
+not required in the Lua-derived anchor: stplug-in files supply decryption keys,
+not a complete Steam depot topology. A shared history must instead be declared
+by the root app and cover every root-build interval. It does not claim coverage
+before SteamDB's first available build or across pages that failed to load.

@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "control": [
+    {
+      "id": "ronin-control",
+      "component": "control",
+      "protocol": "tsuki-envelope-v1",
+      "encoding": "json",
+      "carrier": "unix-socket"
+    }
+  ],
+  "imports": [],
+  "exports": [
+    { "id": "pins.list", "component": "control" },
+    { "id": "pins.set", "component": "control" },
+    { "id": "pins.clear", "component": "control" },
+    { "id": "pins.history.import", "component": "control" },
+    { "id": "pins.history.list", "component": "control" },
+    { "id": "pins.history.resolve", "component": "control" }
+  ],
+  "events": [],
+  "logging": {
+    "sources": [
+      {
+        "kind": "line-file",
+        "path": "$HOME/.SLSsteam.log",
+        "format": "bracket-level-lines",
+        "default_level": "info",
+        "levels": {
+          "Once": "info",
+          "Debug": "debug",
+          "Info": "info",
+          "Notify": "info",
+          "Warn": "warn"
+        }
+      }
+    ]
+  },
+  "health": {
+    "aggregate": "all-required",
+    "components": [
+      {
+        "component": "steam-hooks",
+        "required": true,
+        "readiness": {
+          "kind": "mapped-library",
+          "grace_ms": 20000
+        }
+      }
+    ]
+  },
+  "private_resources": []
+}

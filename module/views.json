@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "views": [
+    {
+      "id": "manifest-pins",
+      "label": "Manifest Pins",
+      "kind": "hosted-page",
+      "entry": "views/manifest-pins/index.js",
+      "style": "views/manifest-pins/index.css",
+      "target": {
+        "host": "tsuki-overlay",
+        "slot": "module-page"
+      },
+      "imports": [
+        "pins.list",
+        "pins.set",
+        "pins.clear",
+        "pins.history.import",
+        "pins.history.list",
+        "pins.history.resolve"
+      ]
+    }
+  ]
+}

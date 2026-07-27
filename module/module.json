@@ -1,0 +1,102 @@
+{
+  "spec_version": "2.0",
+  "id": "slsteam",
+  "name": "SLSsteam Ronin",
+  "version": "1.0.0",
+  "description": "Upstream-first Steam launch extension for added-game support.",
+  "features": [
+    "added-games",
+    "manifest-pinning",
+    "achievement-schemas",
+    "compatibility-tools"
+  ],
+  "capabilities": [
+    {
+      "id": "steam.launch.audit-library",
+      "reason": "Install the Ronin Steam client hooks at launch"
+    },
+    {
+      "id": "filesystem.config",
+      "reason": "Read and update established SLSsteam configuration"
+    },
+    {
+      "id": "filesystem.steam-read",
+      "reason": "Discover Lua-added games and Steam product data"
+    },
+    {
+      "id": "filesystem.steam-write",
+      "reason": "Provision app-info, depot keys and manifests for added games"
+    },
+    {
+      "id": "network.outbound",
+      "origins": ["https://*.steamcontent.com", "https://api.steampowered.com"],
+      "reason": "Retrieve Steam product information and manifests"
+    },
+    {
+      "id": "notifications.desktop",
+      "reason": "Show optional readiness and compatibility notifications"
+    },
+    {
+      "id": "process.spawn.packaged",
+      "reason": "Run the package-owned preparation and control companions"
+    },
+    {
+      "id": "steam.ui.hosted-view",
+      "reason": "Show the module-owned manifest pin manager in the Tsuki overlay"
+    }
+  ],
+  "dependencies": [],
+  "runtime": {
+    "components": [
+      {
+        "id": "control",
+        "kind": "subprocess",
+        "entry": "payload/ronin-control",
+        "args": [],
+        "control": "ronin-control",
+        "restart": {
+          "policy": "on-failure",
+          "max_attempts": 3
+        },
+        "shutdown": {
+          "grace_ms": 2000
+        }
+      },
+      {
+        "id": "steam-hooks",
+        "kind": "steam-launch-extension",
+        "apply": "steam-restart",
+        "artifacts": [
+          {
+            "path": "payload/library-inject.so",
+            "role": "audit-library",
+            "order": 0
+          },
+          {
+            "path": "payload/SLSsteam.so",
+            "role": "audit-library",
+            "order": 1
+          }
+        ],
+        "health": {
+          "kind": "mapped-library",
+          "process": "steam",
+          "artifact": "payload/SLSsteam.so",
+          "grace_ms": 20000
+        },
+        "prepare": {
+          "entry": "payload/sls-prelaunch",
+          "args": [],
+          "timeout_ms": 120000
+        }
+      }
+    ],
+    "activation_order": ["control", "steam-hooks"],
+    "shutdown_order": ["steam-hooks", "control"]
+  },
+  "documents": {
+    "settings": "settings.json",
+    "interface": "interface.json",
+    "views": "views.json"
+  }
+}
