@@ -60,6 +60,33 @@ namespace ManifestStoreIO
 		return true;
 	}
 
+	inline bool atomicWrite(const fs::path& target, const std::string& bytes)
+	{
+		std::error_code ec;
+		fs::create_directories(target.parent_path(), ec);
+		if (ec) return false;
+
+		const fs::path tmp = uniqueTempPath(target);
+		{
+			std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+			if (!out.is_open()) return false;
+			out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+			if (!out.good())
+			{
+				out.close();
+				fs::remove(tmp, ec);
+				return false;
+			}
+		}
+		fs::rename(tmp, target, ec);
+		if (ec)
+		{
+			fs::remove(tmp, ec);
+			return false;
+		}
+		return true;
+	}
+
 	inline bool restore(const fs::path& stored, const fs::path& staged)
 	{
 		if (!isValidManifest(stored)) return false;

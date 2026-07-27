@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,12 @@ namespace ManifestStore
 	// manifest magic; non-empty corrupt files are not valid fallbacks.
 	bool isInDepotcache(uint32_t depotId, uint64_t gid);
 	bool isArchived(uint32_t depotId, uint64_t gid);
+
+	// Read the exact archived manifest's ContentManifestMetadata and return
+	// cb_disk_original. A pin rewrite must update DepotEntry.ManifestGid and
+	// ManifestSize as one pair; callers fail closed when this is unavailable.
+	std::optional<uint64_t> archivedInstalledSize(
+	    uint32_t depotId, uint64_t gid);
 
 	// If store/<depotId>_<gid>.manifest exists and depotcache lacks it,
 	// copy it into depotcache so Steam's on-disk check finds it.  Returns

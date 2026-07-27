@@ -3,6 +3,7 @@
 
 #Force g++ cause clang crashes on some hooks
 CXX := g++
+STEAMCLIENT ?= $(HOME)/.local/share/Steam/ubuntu12_32/steamclient.so
 
 libs := $(wildcard lib/*.a)
 srcs := $(shell find src/ -type f -iname "*.cpp")
@@ -34,7 +35,20 @@ ifeq ($(shell type mold &> /dev/null && echo "found"),found)
 endif
 
 audit-libs:
-	make -j $(JOBS) bin/SLSsteam.so bin/library-inject.so
+	make -j $(JOBS) bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch bin/ronin-control
+
+ronin-module: audit-libs
+	cp bin/SLSsteam.so module/payload/SLSsteam.so
+	cp bin/library-inject.so module/payload/library-inject.so
+	cp bin/sls-prelaunch module/payload/sls-prelaunch
+	cp bin/ronin-control module/payload/ronin-control
+	mkdir -p module/assets/steamdb-history-extension
+	cp tools/steamdb-history-extension/* module/assets/steamdb-history-extension/
+
+test-manifestpin-patterns:
+	g++ -std=c++20 tools/test_manifestpin_patterns.cpp \
+		-o /tmp/test_manifestpin_patterns
+	/tmp/test_manifestpin_patterns "$(STEAMCLIENT)"
 
 tools:
 	make -j 2 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber
@@ -47,6 +61,15 @@ bin/library-inject.so: tools/library-inject/main.cpp tools/library-inject/build.
 	sh tools/library-inject/build.sh
 	@mkdir -p bin
 	cp tools/library-inject/library-inject.so bin/library-inject.so
+
+bin/sls-prelaunch: tools/sls-prelaunch.cpp $(filter-out obj/main.o,$(objs)) $(libs)
+	@mkdir -p bin
+	$(CXX) $(CXXFLAGS) -Iinclude $^ -o $@ \
+		$(filter-out -shared,$(LDFLAGS))
+
+bin/ronin-control: tools/ronin-control.cpp
+	@mkdir -p bin
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic $< -o $@
 
 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber:
 	sh tools/ticket-grabber/build.sh
@@ -117,4 +140,4 @@ build: audit-libs tools
 rebuild: clean build
 release: rebuild zips
 
-.PHONY: audit-libs tools build clean rebuild zips
+.PHONY: audit-libs ronin-module test-manifestpin-patterns tools build clean rebuild zips

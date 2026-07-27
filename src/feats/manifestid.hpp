@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Manifest GID pinning feature.
+// Legacy Lua setManifestid catalog.
 //
 // Background: a Lua script in `<Steam>/config/stplug-in/` may carry
 //
 //     setManifestid(<depotId>, "<gid>")
 //
-// alongside `addappid(...)`.  Without `setManifestid`, the depot is
-// installed at whatever `manifests.public.gid` PICS happens to ship
-// at the moment of install — which is fine for "I want the latest"
-// but breaks reproducibility, version-pinned mods, and any flow that
-// expects a specific build.
+// alongside `addappid(...)`.
 //
 // This feature ingests `setManifestid` calls into a depot-id keyed
-// catalog and rewrites the manifests block of the PICS wire-format
-// app buffer so Steam's installer picks our pinned GID instead of
-// upstream's `public`.
+// compatibility catalog. It does NOT rewrite PICS buffers and does NOT choose
+// the install plan's manifest GID. That old behavior failed Steam's product-
+// info integrity check and was deliberately removed; see pics.cpp.
+//
+// Today the catalog is consulted only when deciding whether a manifest-code
+// request belongs to SLSsteam's managed scope. Actual Ronin build locking is
+// driven independently by config.yaml's structured `ManifestPins` block and
+// the ManifestBind/ReconcilePin download-planner hooks.
 //
 // Catalog layout (mirrors DepotKey):
 //   <SLSsteam config dir>/cache/manifestid_<depotId>.yaml
@@ -25,8 +26,8 @@
 //
 // Application points:
 //   - Importer runs at startup alongside DepotKey::importLuaScripts.
-//   - Buffer rewrite runs inside PICS::recvProductInfoResponse, just
-//     before persistAppBuffer, only for AdditionalApps.
+//   - ManifestCode treats catalogued depots as managed request-code/fetch
+//     scope. No product-info or install-plan mutation occurs here.
 
 #pragma once
 
@@ -39,7 +40,9 @@ namespace ManifestId
 	std::string getCatalogDir();
 	std::string getCatalogPath(uint32_t depotId);
 
-	// Returns the pinned GID for `depotId`, or empty string if none.
+	// Returns the catalogued legacy GID for `depotId`, or empty if none.
+	// Presence currently affects request scope only; this does not select an
+	// install manifest.
 	std::string getPinnedGid(uint32_t depotId);
 
 	// Persist a (depotId, gid) pair to the catalog.  Idempotent.

@@ -205,6 +205,32 @@ namespace Patterns
 			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 8C 04 00 00 8B 55 10 8B 7D 0C 89 85 A0 FB FF FF 8B 45 08",
 			SigFollowMode::None
 		};
+		/*
+		 * The install planner builds two sibling vectors with the shared
+		 * BuildDepotDependency function. Live Linux tracing on Steam build
+		 * 1784778118 proved that the first call (flag 0, ctx+0xb5c) owns the
+		 * acquisition target: its GID is the one printed by "Downloading ...
+		 * for depot". The second call (flag 1, ctx+0xb4c) owns the
+		 * comparison/active-side pass: changing only that vector made Steam
+		 * validate public files against the historical manifest while still
+		 * downloading the public GID. Manifest pins must therefore alter only
+		 * the first call. Globally detouring the shared builder rewrites both
+		 * and makes Steam falsely report "active == target" without
+		 * downloading historical content.
+		 *
+		 * This signature starts at the target call itself and includes the
+		 * immediate post-call virtual-dispatch guard.  ManifestBind verifies
+		 * that its rel32 destination is BuildDepotDependency before changing
+		 * the instruction, so a Steam update fails closed rather than
+		 * redirecting an unrelated call.
+		 */
+		Pattern_t BuildDepotTargetCall
+		{
+			"CDepotDownloadMgr::BuildDepotDependency target-plan call",
+			"E8 ? ? ? ? 8B 46 08 8D 9F ? ? ? ? 83 C4 10 89 5D ? "
+			"8B 10 8B 52 4C 39 DA 0F 85",
+			SigFollowMode::None
+		};
 		Pattern_t EvaluateConfigChanges
 		{
 			"CDepotDownloadMgr::EvaluateConfigChanges",
@@ -322,7 +348,12 @@ namespace Patterns
 			 *     keep the selected gid consistent between acquisition and
 			 *     the later per-download lookup. They are a cooperating pair.
 			 *   BuildDepotDependency
-			 *     rewrites the install-plan source gid before Steam commits it.
+			 *     is the shared active/target vector builder.
+			 *   BuildDepotTargetCall
+			 *     identifies only the target-vector invocation. ManifestBind
+			 *     redirects this call after verifying its destination is
+			 *     BuildDepotDependency; the active-vector invocation must
+			 *     remain untouched.
 			 *   EvaluateConfigChanges
 			 *     prevents the installed pinned gid from being immediately
 			 *     classified as an update against the public gid.
@@ -350,6 +381,7 @@ namespace Patterns
 			CDepotDownloadMgr::ProcessDepotManifest.optional = true;
 			CDepotDownloadMgr::PrepareDepotDownload.optional = true;
 			CDepotDownloadMgr::BuildDepotDependency.optional = true;
+			CDepotDownloadMgr::BuildDepotTargetCall.optional = true;
 			CDepotDownloadMgr::EvaluateConfigChanges.optional = true;
 		}
 	} optionalPatternSetup;

@@ -4,6 +4,70 @@ Ronin is an upstream-first SLSsteam variant for Tsuki. Its base is
 `AceSLS/SLSsteam`; `slsteam-moon` is a behavioral reference, not the base
 branch.
 
+## Historical manifest resolution
+
+The Manifest Pins view can resolve a historical build to its complete
+`depot_id -> manifest_gid` map after importing an observation made by the
+packaged SteamDB browser helper.
+
+The current locally discovered Steam snapshot is the trust anchor. Observed
+builds must begin at that exact build. For each build, Ronin stores the current
+complete map, verifies every SteamDB `old -> new` manifest transition against
+that map, rolls those depots back to `old`, and continues toward older builds.
+Unchanged depots carry backward automatically. A zero transition endpoint
+means the depot was absent on that side of the update.
+
+Each app history reconstructs only depots represented by that app's
+transitions. The collector records the app's authoritative depot table,
+including embedded DLC ownership, configuration hints, and current branch
+BuildIDs/timestamps. Every transition depot must be declared as owned by that
+same app. An app without a depot table is classified as non-downloadable and
+does not contribute a payload history.
+
+Depot observation is deliberately richer than the reconstruction input. Each
+exported depot retains `depot_id`, `owner_appid`, `configuration`, and the
+SteamDB `Size` and `DL` cells as `size`/`dl` objects containing both decimal
+`bytes` and human-readable `display` values. The importer currently consumes
+identity, ownership, and configuration only; it must not require or reinterpret
+size metadata merely because pin resolution does not use it.
+
+The collector walks every depot table rendered in the Depots pane. It retains
+the source section heading, normalized category, descriptor, and owner rather
+than dropping redistributable/shared rows. Presentation/database normalization
+remains downstream work; pin materialization consumes only the identifiers,
+ownership, timestamps, transitions, and manifest histories it validates.
+
+Duplicate DLC/inner-DLC rows are canonicalized by depot and owner while their
+individual source appearances remain attached. Shared and redistributable
+history is collected from each referenced depot's bounded Manifests page,
+rather than recursively crawling its often enormous owner application. DLC
+release timestamps that fall between two base builds are declared to attach to
+the preceding base build during materialization.
+
+The collector also records the base app's SteamDB DLC relationships and
+collects downloadable DLC apps independently. When resolving a base build,
+Ronin uses the next newer base build as the exclusive end of that build's
+compatibility interval. DLC and shared manifests published inside the interval
+attach to its older endpoint; the newest base build has an open-ended interval.
+The local anchor applies to key-bearing game and DLC depots. stplug-in Lua
+files are the only available source of their decryption keys, but they are not
+a complete Steam depot topology and normally omit shared/redistributable
+depots. A shared history therefore does not have to appear in that anchor; it
+must instead be declared by the root app and contain a timestamped manifest
+covering every root-build interval. DLC not present in the local anchor is
+ignored. Missing shared interval coverage rejects the import instead of
+emitting a partial pin map.
+
+Any mismatch, duplicate build, malformed identifier, missing key-bearing
+anchor depot, incomplete shared interval, or numeric overflow rejects the
+whole import before the previous cache is replaced. The cache is stored as mode `0600` under
+`$HOME/.config/SLSsteam/ronin/manifest-history/`.
+
+This is deliberately browser-assisted. Ronin does not bypass SteamDB's access
+controls, copy browser cookies, or pretend SteamDB exposes a supported API.
+Coverage is only the set of builds and depot histories that SteamDB rendered
+successfully during that user-triggered collection.
+
 ## Repository ownership and layout
 
 Ronin is the single source repository for both the native fork and its complete
@@ -31,7 +95,9 @@ slssteam-ronin/
 │   │   └── config.yaml
 │   └── payload/               # populated by the module packaging target
 │       ├── SLSsteam.so
-│       └── library-inject.so
+│       ├── library-inject.so
+│       ├── sls-prelaunch
+│       └── ronin-control
 ├── scripts/
 │   └── package-tsuki-module.sh
 ├── build/                     # ignored, intermediate compiler output
@@ -148,17 +214,20 @@ unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
 - [x] Port compatibility-tool behavior.
 - [x] Port parental restrictions.
 - [x] Port the CEF port publication contract.
-- [ ] Move the canonical Tsuki module manifest, settings, communication
+- [x] Move the canonical Tsuki module manifest, settings, communication
       declarations, assets, and defaults into `module/`.
-- [ ] Add one build/test/package target that produces the native payload and
+- [x] Add one build/package target that produces the native payload and
       complete self-contained Tsuki module from the same revision.
-- [ ] Remove the final SLSsteam-specific manifest copy from Tsuki after generic
-      external package discovery can load Ronin directly.
+- [x] Add a package-owned Ronin control companion and hosted Manifest Pins
+      page; Tsuki contributes only generic component/view hosting.
+- [ ] Replace Tsuki's installed compatibility copy with external package
+      discovery or an explicit package installation operation.
 - [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
 
 The retained native feature transplant was completed and compiled on
 2026-07-26. Its offline regression inventory passes. The final checkbox remains
 open because the controlled live A/B validation intentionally mutates Steam
-state and requires separate current-user authorization. Module packaging and
-manifest migration are checklist items 2 and 3, not part of the native
-transplant.
+state and requires separate current-user authorization. The canonical package
+now lives in this repository. Tsuki's `modules/slsteam/` tree is a deployed
+compatibility copy until external package discovery or installation replaces
+that staging step.

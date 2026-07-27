@@ -4,12 +4,17 @@
 
 #include "manifeststore.hpp"
 #include "manifeststore_io.hpp"
+#include "manifestdecrypt.hpp"
+#include "manifestsynth.hpp"
+#include "depotkey.hpp"
 
 #include "../globals.hpp"
 #include "../log.hpp"
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <sys/stat.h>
 #include <system_error>
 
@@ -52,6 +57,48 @@ namespace
 	{
 		return std::to_string(depotId) + "_" + std::to_string(gid)
 		    + ".manifest";
+	}
+
+	bool readBytes(const fs::path& path, std::string& bytes)
+	{
+		std::ifstream in(path, std::ios::binary);
+		if (!in.is_open()) return false;
+		bytes.assign(
+		    std::istreambuf_iterator<char>(in),
+		    std::istreambuf_iterator<char>());
+		return in.good() || in.eof();
+	}
+
+	bool normalizeStoredManifest(
+	    const fs::path& path, uint32_t depotId, uint64_t gid)
+	{
+		std::string input;
+		if (!readBytes(path, input)) return false;
+		const auto savedKey = DepotKey::getCachedKey(depotId);
+		std::string normalized;
+		std::string error;
+		if (!ManifestDecrypt::normalizeForDepotcache(
+		        input, savedKey.key, normalized, error))
+		{
+			g_pLog->warn(
+			    "ManifestStore: refusing depot=%u gid=%llu manifest: %s\n",
+			    depotId, static_cast<unsigned long long>(gid),
+			    error.c_str());
+			return false;
+		}
+		if (normalized == input) return true;
+		if (!ManifestStoreIO::atomicWrite(path, normalized))
+		{
+			g_pLog->warn(
+			    "ManifestStore: failed to publish decrypted depot=%u gid=%llu\n",
+			    depotId, static_cast<unsigned long long>(gid));
+			return false;
+		}
+		g_pLog->info(
+		    "ManifestStore: decrypted filenames for depot=%u gid=%llu "
+		    "before depotcache publication\n",
+		    depotId, static_cast<unsigned long long>(gid));
+		return true;
 	}
 }
 
@@ -127,7 +174,11 @@ namespace ManifestStore
 		const std::string name = manifestName(depotId, gid);
 		const fs::path archived = fs::path(store) / name;
 		const fs::path staged = fs::path(root) / "depotcache" / name;
-		if (!ManifestStoreIO::publish(sourcePath, archived, staged)) return false;
+		if (!ManifestStoreIO::isValidManifest(sourcePath)
+		    || !ManifestStoreIO::atomicCopy(sourcePath, archived)
+		    || !normalizeStoredManifest(archived, depotId, gid)
+		    || !ManifestStoreIO::restore(archived, staged))
+			return false;
 
 		g_pLog->info("ManifestStore: published downloaded %s (store -> depotcache)\n",
 		             name.c_str());
@@ -154,6 +205,31 @@ namespace ManifestStore
 		    fs::path(store) / manifestName(depotId, gid));
 	}
 
+	std::optional<uint64_t> archivedInstalledSize(
+	    uint32_t depotId, uint64_t gid)
+	{
+		if (!isArchived(depotId, gid)) return std::nullopt;
+		const std::string store = dir();
+		if (store.empty()) return std::nullopt;
+
+		std::ifstream ifs(
+		    fs::path(store) / manifestName(depotId, gid), std::ios::binary);
+		if (!ifs.is_open()) return std::nullopt;
+		const std::string bytes{
+		    std::istreambuf_iterator<char>(ifs),
+		    std::istreambuf_iterator<char>()};
+
+		uint64_t installedSize = 0;
+		uint64_t downloadSize = 0;
+		if (!ManifestSynth::parseManifestSizes(
+		        bytes, installedSize, downloadSize)
+		    || installedSize == 0)
+		{
+			return std::nullopt;
+		}
+		return installedSize;
+	}
+
 	bool restoreToDepotcache(uint32_t depotId, uint64_t gid)
 	{
 		if (!gid) return false;
@@ -164,7 +240,15 @@ namespace ManifestStore
 		const std::string name = manifestName(depotId, gid);
 		const fs::path dest = fs::path(root) / "depotcache" / name;
 		const fs::path src = fs::path(store) / name;
-		if (ManifestStoreIO::restore(src, dest))
+		if (ManifestStoreIO::isValidManifest(dest))
+		{
+			if (normalizeStoredManifest(dest, depotId, gid)) return true;
+			std::error_code ec;
+			fs::remove(dest, ec);
+		}
+		if (ManifestStoreIO::isValidManifest(src)
+		    && normalizeStoredManifest(src, depotId, gid)
+		    && ManifestStoreIO::restore(src, dest))
 		{
 			g_pLog->info("ManifestStore: restored %s into depotcache\n",
 			             name.c_str());

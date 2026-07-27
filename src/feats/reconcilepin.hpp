@@ -13,8 +13,10 @@
 // The fix has TWO cooperating parts, both for a LOCKED app only:
 //
 //  (1) ctx-vector patch: on the TARGET call (flags & 0x8), rewrite the depot
-//      ManifestGid in the ctx vector (ptr @ ctx+0x78, count @ ctx+0x84,
-//      stride 0x20, gid @ +0x8) to the configured pin.
+//      ManifestGid and ManifestSize as one pair in the ctx vector (ptr @
+//      ctx+0x78, count @ ctx+0x84, stride 0x20, gid @ +0x8, size @ +0x10).
+//      Size comes from the exact archived manifest; a missing/malformed
+//      archive leaves both public values intact.
 //
 //  (2) target-local patch: EvaluateConfigChanges also compares against an
 //      appinfo-derived TARGET CUtlVector built as a function LOCAL at
@@ -22,12 +24,12 @@
 //      not in [ctx+0x78] (live trace, app 3525970: ctx vector already held the
 //      pin, the local held public -> mismatch -> perpetual "updated depots"
 //      loop while installing).  An entry hook can't reach a not-yet-built
-//      local, so we hook the shared appinfo->depot-vector builder that fills it
-//      (derived from the EvaluateConfigChanges call site) and patch the local
-//      AFTER population — but ONLY when the return address is this function's
-//      call site (the builder has 6 callers; patching its output globally would
-//      contaminate the chunk-diff baseline path).  The local is always the
-//      appinfo/desired side, so forcing it to the pin is unconditionally safe.
+//      local, so we redirect only EvaluateConfigChanges' direct call to the
+//      shared appinfo->depot-vector builder and patch the same gid/size pair AFTER
+//      population. The builder has other callers which remain untouched;
+//      detouring its shared entry is deliberately avoided. The local is always
+//      the appinfo/desired side, so forcing it to the pin is unconditionally
+//      safe.
 //
 // Together: a still-public install (active=public != target=pin) triggers the
 // one downgrade, and afterwards (active=pin == target=pin) the reconcile finds

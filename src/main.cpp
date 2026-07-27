@@ -157,35 +157,10 @@ static void setup()
 		    CefPort::resolveSessionPortNoPersist(CefPort::contractPath());
 	}
 
-	// Steam reads appinfo.vdf before the runtime hooks below are installed.
-	// Provision missing added-app records and splice cached records into the
-	// file while the audit module is still in its pre-launch setup phase.
-	//
-	// The key and manifest catalogues must be loaded first: provisioning
-	// deliberately omits depots without a known key and uses catalogue
-	// metadata while reconstructing app-info. All three operations are
-	// idempotent, so later hook-startup imports remain safe.
-	if (const char* home = std::getenv("HOME"))
-	{
-		static const char* steamRoots[] = {
-			"/.steam/steam",
-			"/.steam/debian-installation",
-			"/.local/share/Steam",
-		};
-		for (const char* suffix : steamRoots)
-		{
-			const auto candidate = std::string(home) + suffix +
-			    "/appcache/appinfo.vdf";
-			if (!std::filesystem::exists(candidate))
-				continue;
-
-			DepotKey::importLuaScripts();
-			ManifestId::importLuaScripts();
-			AppInfoProvision::provisionAllAddedApps(candidate);
-			AppInfoVdf::injectAllCached(candidate);
-			break;
-		}
-	}
+	// App-info provisioning runs in the package-contained sls-prelaunch
+	// executable before Tsuki spawns Steam. It must not run from this
+	// rtld-audit callback: doing the same allocation/network/cache work here
+	// corrupts the loader process's allocator on Steam build 1784778118.
 
 	// Upstream-merge note: preserve the null check in this block. Upstream
 	// historically constructed std::string(getenv("LD_LIBRARY_PATH"))

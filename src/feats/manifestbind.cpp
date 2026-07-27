@@ -20,6 +20,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -107,10 +108,23 @@ namespace
 	{
 		BuildDepFn_t orig = nullptr;
 		lm_address_t addr = LM_ADDRESS_BAD;
-		lm_address_t tramp = LM_ADDRESS_BAD;
 		lm_size_t    size = 0;
+		uint8_t      originalCall[5]{};
 	};
-	BuildDetour g_builder;  // CDepotDownloadMgr::BuildDepotDependency
+	// Only the target-plan call is redirected. The shared builder entry is
+	// deliberately left untouched because another caller builds active state.
+	BuildDetour g_builder;
+	// ProcessDepotManifest and PrepareDepotDownload are shared by both the
+	// active-vector and target-vector builder calls. The call-site wrapper
+	// brackets only the target invocation, allowing those shared leaf hooks to
+	// distinguish the two without relying on Steam's unstable stack layout.
+	thread_local unsigned g_targetPlanDepth = 0;
+
+	struct TargetPlanScope
+	{
+		TargetPlanScope() { ++g_targetPlanDepth; }
+		~TargetPlanScope() { --g_targetPlanDepth; }
+	};
 
 	bool g_fallbackEnabled = true;
 	// Patch the depot gid in the install plan so Steam commits the pinned build
@@ -269,6 +283,7 @@ namespace
 	bool g_planTrace = false;
 	std::atomic<int> g_traceLeftLeaf{12};
 	std::atomic<int> g_traceLeftPlanner{12};
+	std::atomic<int> g_traceLeftBuilder{80};
 
 	// Is `v` a plausible return address: inside steamclient .text and preceded
 	// by a call instruction?  Reads only mapped code (safe).
@@ -319,6 +334,59 @@ namespace
 				             static_cast<unsigned long>(v - base));
 				++shown;
 			}
+		}
+	}
+
+	void logBuilderCall(void* returnAddress, void* ctx, uint32_t flag,
+	                    void* depots)
+	{
+		if (!g_planTrace || g_traceLeftBuilder.fetch_sub(1) <= 0) return;
+
+		const auto base = reinterpret_cast<uintptr_t>(g_modSteamClient.base);
+		const auto end = reinterpret_cast<uintptr_t>(g_modSteamClient.end);
+		const auto ret = reinterpret_cast<uintptr_t>(returnAddress);
+		const uintptr_t callSite =
+		    ret >= base + 5 && ret < end ? ret - base - 5 : 0;
+
+		g_pLog->info(
+		    "PlanTrace[build]: caller=steamclient+0x%lx flag=%u ctx=%p vec=%p\n",
+		    static_cast<unsigned long>(callSite), flag, ctx, depots);
+		if (!depots) return;
+
+		const auto* vector = reinterpret_cast<const char*>(depots);
+		const char* entries =
+		    *reinterpret_cast<char* const*>(vector + kVecBaseOff);
+		const int32_t capacity =
+		    *reinterpret_cast<const int32_t*>(vector + kVecCapacityOff);
+		const int32_t count =
+		    *reinterpret_cast<const int32_t*>(vector + kVecCountOff);
+		if (!entries || !ManifestSelection::validVectorBounds(
+		                    count, capacity, kDepotEntryStride))
+		{
+			g_pLog->info(
+			    "PlanTrace[build]:   invalid vector base=%p count=%d capacity=%d\n",
+			    static_cast<const void*>(entries), count, capacity);
+			return;
+		}
+
+		const int32_t shown = std::min<int32_t>(count, 16);
+		for (int32_t i = 0; i < shown; ++i)
+		{
+			const char* entry =
+			    entries + static_cast<size_t>(i) * kDepotEntryStride;
+			g_pLog->info(
+			    "PlanTrace[build]:   [%d] depot=%u gid=%llu size=%llu dlc=%u "
+			    "shared=%u\n",
+			    i, *reinterpret_cast<const uint32_t*>(entry),
+			    static_cast<unsigned long long>(
+			        *reinterpret_cast<const uint64_t*>(
+			            entry + kDepotEntryGidOff)),
+			    static_cast<unsigned long long>(
+			        *reinterpret_cast<const uint64_t*>(
+			            entry + kDepotEntrySizeOff)),
+			    *reinterpret_cast<const uint32_t*>(entry + 0x18),
+			    static_cast<unsigned>(
+			        *reinterpret_cast<const uint8_t*>(entry + 0x1e)));
 		}
 	}
 
@@ -589,8 +657,14 @@ namespace
 	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
 	{
 		logPlanStack("leaf", g_traceLeftLeaf, appId, depotId, manifestId);
-		const uint64_t useGid =
-		    redirectGid("leaf", appId, depotId, manifestId, false);
+		// The same leaf is reached while Steam constructs active/installed and
+		// target/download vectors. Substituting on the active path makes Steam
+		// verify public files against the historical manifest and can produce
+		// a false success or "Corrupt game files". Only the target call is
+		// bracketed by TargetPlanScope.
+		const uint64_t useGid = g_targetPlanDepth
+		    ? redirectGid("leaf", appId, depotId, manifestId, false)
+		    : manifestId;
 		return g_leaf.orig(ctx, a0C, appId, depotId, useGid, a20);
 	}
 
@@ -598,12 +672,14 @@ namespace
 	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
 	{
 		logPlanStack("plan", g_traceLeftPlanner, appId, depotId, manifestId);
-		const uint64_t useGid =
-		    redirectGid("plan", appId, depotId, manifestId, true);
+		const uint64_t useGid = g_targetPlanDepth
+		    ? redirectGid("plan", appId, depotId, manifestId, true)
+		    : manifestId;
 		return g_planner.orig(ctx, a0C, appId, depotId, useGid, a20);
 	}
 
-	// CDepotDownloadMgr::BuildDepotDependency — patch the PLAN in place.
+	// CDepotDownloadMgr::BuildDepotDependency target call — patch the target
+	// PLAN in place.
 	//
 	// This is the real manifest-pin lever.
 	// Steam decides the depot gid + build it installs/commits from the
@@ -617,6 +693,7 @@ namespace
 	// so a signature/ABI drift degrades to a harmless pass-through.
 	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, uint32_t a3)
 	{
+		logBuilderCall(__builtin_return_address(0), ctx, flag, depots);
 		if (depots)
 		{
 			const auto planDeadline =
@@ -641,12 +718,12 @@ namespace
 					char* e = base + static_cast<size_t>(i) * kDepotEntryStride;
 					const uint32_t depotId =
 					    *reinterpret_cast<const uint32_t*>(e);
-					const uint64_t size =
-					    *reinterpret_cast<const uint64_t*>(e + kDepotEntrySizeOff);
+					auto* const sizep =
+					    reinterpret_cast<uint64_t*>(e + kDepotEntrySizeOff);
 					auto* const gidp =
 					    reinterpret_cast<uint64_t*>(e + kDepotEntryGidOff);
 
-					if (size == 0 && DepotKey::isManagedDepot(depotId))
+					if (*sizep == 0 && DepotKey::isManagedDepot(depotId))
 					{
 						g_pLog->info(
 						    "ManifestBind[build]: dropping empty depot %u (size 0) from plan\n",
@@ -657,15 +734,47 @@ namespace
 					const uint64_t pin = g_config.getManifestPin(depotId);
 					if (pin)
 					{
-						if (g_pinPlanner && *gidp != pin)
+						if (g_pinPlanner)
 						{
-							g_pLog->info(
-							    "ManifestBind[build]: depot=%u plan gid=%llu -> pinned "
-							    "gid=%llu (DepotEntry patch)\n",
-							    depotId,
-							    static_cast<unsigned long long>(*gidp),
-							    static_cast<unsigned long long>(pin));
-							*gidp = pin;
+							// ManifestGid and ManifestSize describe one target.
+							// Reusing the public size with a historical GID made
+							// Steam build an internally inconsistent chunk plan:
+							// the target was selected, then content validation
+							// failed with "Read Failed (Corrupt game files)".
+							// Read the authoritative size from the exact archived
+							// manifest and change both fields together. If the
+							// archive is absent or malformed, leave both public
+							// values intact; a partial pin is never safe.
+							const auto pinSize =
+							    ManifestStore::archivedInstalledSize(depotId, pin);
+							if (pinSize)
+							{
+								if (*gidp != pin || *sizep != *pinSize)
+								{
+									g_pLog->info(
+									    "ManifestBind[build]: depot=%u plan gid=%llu "
+									    "size=%llu -> pinned gid=%llu size=%llu "
+									    "(atomic DepotEntry patch)\n",
+									    depotId,
+									    static_cast<unsigned long long>(*gidp),
+									    static_cast<unsigned long long>(*sizep),
+									    static_cast<unsigned long long>(pin),
+									    static_cast<unsigned long long>(*pinSize));
+								}
+								*gidp = pin;
+								*sizep = *pinSize;
+							}
+							else
+							{
+								g_pLog->debugOnce(
+								    "ManifestBind[build]: depot=%u pinned gid=%llu "
+								    "has no valid archived size; leaving public "
+								    "gid=%llu size=%llu intact\n",
+								    depotId,
+								    static_cast<unsigned long long>(pin),
+								    static_cast<unsigned long long>(*gidp),
+								    static_cast<unsigned long long>(*sizep));
+							}
 						}
 					}
 
@@ -704,6 +813,10 @@ namespace
 				    static_cast<void*>(base), count, capacity);
 			}
 		}
+		// Everything below this target-only call, including the shared leaf and
+		// prepare functions, may use the pin. The sibling active call never
+		// enters this wrapper and therefore observes the real installed GID.
+		TargetPlanScope targetScope;
 		return g_builder.orig(ctx, flag, depots, a3);
 	}
 
@@ -745,32 +858,85 @@ namespace
 		d = Detour{};
 	}
 
-	// Install the BuildDepotDependency detour (distinct orig arity).
-	bool installBuilder(Pattern_t& pat, void* hookFn)
+	// Redirect only the target-plan call to BuildDepotDependency. Both the call
+	// site and the shared builder are independently pattern-resolved, and the
+	// rel32 destination must agree with the resolved builder before we write
+	// anything. This is intentionally the same narrow, fail-closed technique
+	// used by ReconcilePin's target-vector redirect.
+	bool installBuilder(Pattern_t& targetCall, Pattern_t& builder, void* hookFn)
 	{
-		if (pat.address == LM_ADDRESS_BAD)
+		if (targetCall.address == LM_ADDRESS_BAD
+		    || builder.address == LM_ADDRESS_BAD)
 		{
-			g_pLog->warn("ManifestBind: %s pattern not found; planner patch disabled\n",
-			             pat.name.c_str());
+			g_pLog->warn(
+			    "ManifestBind: target-plan call or shared builder pattern not "
+			    "found; planner patch disabled\n");
 			return false;
 		}
-		g_builder.addr = pat.address;
-		g_builder.size = LM_HookCode(g_builder.addr,
-		                             reinterpret_cast<lm_address_t>(hookFn),
-		                             &g_builder.tramp);
-		if (!g_builder.size || g_builder.tramp == LM_ADDRESS_BAD)
+
+		const auto* site =
+		    reinterpret_cast<const uint8_t*>(targetCall.address);
+		if (site[0] != 0xE8)
 		{
-			g_pLog->warn("ManifestBind: failed to install %s hook\n",
-			             pat.name.c_str());
+			g_pLog->warn(
+			    "ManifestBind: target-plan site is not `call rel32` "
+			    "(got 0x%02x); planner patch disabled\n", site[0]);
+			return false;
+		}
+
+		int32_t originalRel = 0;
+		__builtin_memcpy(&originalRel, site + 1, sizeof(originalRel));
+		const lm_address_t originalTarget =
+		    targetCall.address + 5 + originalRel;
+		if (originalTarget != builder.address)
+		{
+			g_pLog->warn(
+			    "ManifestBind: target-plan call resolves to %p, expected "
+			    "BuildDepotDependency %p; planner patch disabled\n",
+			    reinterpret_cast<void*>(originalTarget),
+			    reinterpret_cast<void*>(builder.address));
+			return false;
+		}
+
+		const intptr_t hookRel =
+		    reinterpret_cast<intptr_t>(hookFn)
+		    - (static_cast<intptr_t>(targetCall.address) + 5);
+		if (hookRel < INT32_MIN || hookRel > INT32_MAX)
+		{
+			g_pLog->warn(
+			    "ManifestBind: target-plan call redirect is out of rel32 "
+			    "range; planner patch disabled\n");
+			return false;
+		}
+
+		uint8_t replacement[5] = {0xE8, 0, 0, 0, 0};
+		const int32_t hookRel32 = static_cast<int32_t>(hookRel);
+		__builtin_memcpy(replacement + 1, &hookRel32, sizeof(hookRel32));
+		__builtin_memcpy(g_builder.originalCall, site,
+		                 sizeof(g_builder.originalCall));
+
+		lm_prot_t oldProt = LM_PROT_NONE;
+		if (!LM_ProtMemory(targetCall.address, sizeof(replacement),
+		                   LM_PROT_XRW, &oldProt)
+		    || LM_WriteMemory(targetCall.address, replacement,
+		                      sizeof(replacement)) != sizeof(replacement))
+		{
+			g_pLog->warn(
+			    "ManifestBind: failed to redirect target-plan call; planner "
+			    "patch disabled\n");
 			g_builder = BuildDetour{};
 			return false;
 		}
-		MemHlp::fixPICThunkCall(pat.name.c_str(), g_builder.addr, g_builder.tramp);
-		g_builder.orig = reinterpret_cast<BuildDepFn_t>(g_builder.tramp);
-		g_pLog->debug("ManifestBind: %s detour at %p, tramp at %p\n",
-		              pat.name.c_str(),
-		              reinterpret_cast<void*>(g_builder.addr),
-		              reinterpret_cast<void*>(g_builder.tramp));
+		LM_ProtMemory(targetCall.address, sizeof(replacement), oldProt, nullptr);
+
+		g_builder.orig = reinterpret_cast<BuildDepFn_t>(builder.address);
+		g_builder.addr = targetCall.address;
+		g_builder.size = sizeof(replacement);
+		g_pLog->info(
+		    "ManifestBind: redirected target-plan call at %p "
+		    "(BuildDepotDependency=%p)\n",
+		    reinterpret_cast<void*>(g_builder.addr),
+		    reinterpret_cast<void*>(builder.address));
 		return true;
 	}
 }
@@ -811,6 +977,7 @@ namespace ManifestBind
 		// gid in the install plan so Steam commits the pinned build.  Optional;
 		// a missing signature degrades to the leaf/planner redirect only.
 		const bool builder = installBuilder(
+		    Patterns::CDepotDownloadMgr::BuildDepotTargetCall,
 		    Patterns::CDepotDownloadMgr::BuildDepotDependency,
 		    reinterpret_cast<void*>(&hkBuildDepot));
 
@@ -826,10 +993,16 @@ namespace ManifestBind
 	{
 		removeDetour(g_leaf);
 		removeDetour(g_planner);
-		if (g_builder.size && g_builder.addr != LM_ADDRESS_BAD
-		    && g_builder.tramp != LM_ADDRESS_BAD)
+		if (g_builder.size && g_builder.addr != LM_ADDRESS_BAD)
 		{
-			LM_UnhookCode(g_builder.addr, g_builder.tramp, g_builder.size);
+			lm_prot_t oldProt = LM_PROT_NONE;
+			if (LM_ProtMemory(g_builder.addr, g_builder.size,
+			                  LM_PROT_XRW, &oldProt))
+			{
+				LM_WriteMemory(g_builder.addr, g_builder.originalCall,
+				               g_builder.size);
+				LM_ProtMemory(g_builder.addr, g_builder.size, oldProt, nullptr);
+			}
 		}
 		g_builder = BuildDetour{};
 	}

@@ -9,6 +9,8 @@
 #include "../log.hpp"
 #include "../patterns.hpp"
 
+#include "manifeststore.hpp"
+
 #include "libmem/libmem.h"
 
 #include <atomic>
@@ -48,7 +50,46 @@ namespace
 	// DepotEntry: DepotId @ +0, ManifestGid @ +0x8, stride 0x20.
 	constexpr size_t kDepotEntryStride = 0x20;
 	constexpr size_t kDepotEntryGidOff = 0x08;
+	constexpr size_t kDepotEntrySizeOff = 0x10;
 	constexpr int32_t kMaxDepots = 512;
+
+	bool applyPinnedEntry(
+	    const char* site, uint32_t appId, uint8_t* entry, uint32_t depotId,
+	    uint64_t pin)
+	{
+		auto* const gidp =
+		    reinterpret_cast<uint64_t*>(entry + kDepotEntryGidOff);
+		auto* const sizep =
+		    reinterpret_cast<uint64_t*>(entry + kDepotEntrySizeOff);
+		const auto pinSize =
+		    ManifestStore::archivedInstalledSize(depotId, pin);
+		if (!pinSize)
+		{
+			g_pLog->debugOnce(
+			    "ReconcilePin[%s]: app=%u depot=%u pinned gid=%llu has no "
+			    "valid archived size; leaving target gid=%llu size=%llu intact\n",
+			    site, appId, depotId,
+			    static_cast<unsigned long long>(pin),
+			    static_cast<unsigned long long>(*gidp),
+			    static_cast<unsigned long long>(*sizep));
+			return false;
+		}
+
+		if (*gidp != pin || *sizep != *pinSize)
+		{
+			g_pLog->info(
+			    "ReconcilePin[%s]: app=%u depot=%u target gid=%llu size=%llu "
+			    "-> pinned gid=%llu size=%llu (atomic DepotEntry patch)\n",
+			    site, appId, depotId,
+			    static_cast<unsigned long long>(*gidp),
+			    static_cast<unsigned long long>(*sizep),
+			    static_cast<unsigned long long>(pin),
+			    static_cast<unsigned long long>(*pinSize));
+		}
+		*gidp = pin;
+		*sizep = *pinSize;
+		return true;
+	}
 
 	void traceLog(uint32_t appId, uint32_t flags, void* base, int32_t count)
 	{
@@ -104,16 +145,7 @@ namespace
 			const uint32_t depotId = *reinterpret_cast<const uint32_t*>(e);
 			const uint64_t pin = g_config.getManifestPin(depotId);
 			if (!pin) continue;
-			auto* gidp = reinterpret_cast<uint64_t*>(e + kDepotEntryGidOff);
-			if (*gidp != pin)
-			{
-				g_pLog->info("ReconcilePin: app=%u target depot=%u gid=%llu -> "
-				             "pinned gid=%llu\n",
-				             appId, depotId,
-				             static_cast<unsigned long long>(*gidp),
-				             static_cast<unsigned long long>(pin));
-				*gidp = pin;
-			}
+			applyPinnedEntry("ctx", appId, e, depotId, pin);
 		}
 	}
 
@@ -128,21 +160,19 @@ namespace
 	// perpetual "updated depots" loop while installing.
 	//
 	// That local is filled by a shared appinfo->depot-vector builder.
-	// The builder receives &targetVec as an argument and the appId, so a
-	// function-replacement hook can patch the local AFTER it is populated.
-	// We act ONLY when the return address is EvaluateConfigChanges' own call site,
-	// i.e. the local being filled is THIS reconcile's TARGET vector.
+	// The builder receives &targetVec as an argument and the appId. Redirecting
+	// only EvaluateConfigChanges' direct call lets the wrapper patch the local
+	// AFTER it is populated without touching the builder's other callers.
 	//
 	// The builder + its call-site return address are derived from the matched
 	// EvaluateConfigChanges pattern (offsets confirmed on build cfe99f0c):
 	//   call site `e8 rel32` @ EvalAddr+0x183 -> builder = site+5+rel32;
 	//   return addr (the patch gate) = EvalAddr+0x188.
-	// A function-replacement hook on the builder needs no PIC fixup: its
-	// get_pc_thunk is its 5th instruction, outside the stolen 5 prologue bytes.
+	// The call-site redirect invokes the original builder entry directly, so it
+	// needs neither a trampoline nor PIC-thunk relocation.
 	//
 	// CUtlVector<DepotEntry>: element base @ +0x0, count @ +0xc.
 	constexpr size_t kBuilderCallOff = 0x183;  // EvalAddr -> the `e8` opcode
-	constexpr size_t kBuilderRetOff = 0x188;   // EvalAddr -> insn after the call
 	constexpr size_t kVecBaseOff = 0x00;
 	constexpr size_t kVecCountOff = 0x0c;
 
@@ -150,9 +180,8 @@ namespace
 	                                  void*, void*, void*);
 	BuildTargetFn_t g_origBuild = nullptr;
 	lm_address_t    g_buildAddr = LM_ADDRESS_BAD;
-	lm_address_t    g_buildTramp = LM_ADDRESS_BAD;
 	lm_size_t       g_buildSize = 0;
-	uintptr_t       g_buildRet = 0;  // EvaluateConfigChanges call-site return addr
+	uint8_t         g_buildCall[5] = {};
 
 	// Walk the appinfo-derived TARGET CUtlVector and force each pinned depot's
 	// gid to the pin (same DepotEntry layout as everywhere).  This is ALWAYS
@@ -175,16 +204,7 @@ namespace
 			const uint32_t depotId = *reinterpret_cast<const uint32_t*>(e);
 			const uint64_t pin = g_config.getManifestPin(depotId);
 			if (!pin) continue;
-			auto* gidp = reinterpret_cast<uint64_t*>(e + kDepotEntryGidOff);
-			if (*gidp != pin)
-			{
-				g_pLog->info("ReconcilePin: app=%u target-local depot=%u "
-				             "gid=%llu -> pinned gid=%llu\n",
-				             appId, depotId,
-				             static_cast<unsigned long long>(*gidp),
-				             static_cast<unsigned long long>(pin));
-				*gidp = pin;
-			}
+			applyPinnedEntry("target-local", appId, e, depotId, pin);
 		}
 	}
 
@@ -192,13 +212,8 @@ namespace
 	void* hkBuildTarget(void* a0, uint32_t appId, void* a2, void* targetVec,
 	                    void* a4, void* ctx, void* a6, void* a7)
 	{
-		// Capture the call-site BEFORE invoking the original (the builder is a
-		// jmp-detoured cdecl function, so our frame's return address is the
-		// caller's — EvaluateConfigChanges when the gate matches).
-		const bool ours =
-		    reinterpret_cast<uintptr_t>(__builtin_return_address(0)) == g_buildRet;
 		const bool act =
-		    g_pinActive && ours && targetVec && g_config.isAppLocked(appId);
+		    g_pinActive && targetVec && g_config.isAppLocked(appId);
 
 		void* r = g_origBuild(a0, appId, a2, targetVec, a4, ctx, a6, a7);
 
@@ -221,27 +236,51 @@ namespace
 		}
 		int32_t rel = 0;
 		__builtin_memcpy(&rel, site + 1, sizeof(rel));
-		g_buildAddr = reinterpret_cast<lm_address_t>(
+		const lm_address_t builderAddr = reinterpret_cast<lm_address_t>(
 		    const_cast<uint8_t*>(site) + 5 + rel);
-		g_buildRet = reinterpret_cast<uintptr_t>(evalAddr) + kBuilderRetOff;
 
-		g_buildSize = LM_HookCode(g_buildAddr,
-		                          reinterpret_cast<lm_address_t>(&hkBuildTarget),
-		                          &g_buildTramp);
-		if (!g_buildSize || g_buildTramp == LM_ADDRESS_BAD)
+		// Redirect only EvaluateConfigChanges' own call instruction.  The old
+		// implementation detoured the shared builder entry and called it via a
+		// trampoline.  On Steam build 1784778118 that trampoline path produced
+		// an invalid worker-thread jump even though the call site and function
+		// entry still looked superficially compatible.  A call-site redirect
+		// is narrower: other builder callers remain untouched, and our wrapper
+		// can call the original entry directly.
+		const intptr_t hookRel =
+		    reinterpret_cast<intptr_t>(&hkBuildTarget)
+		    - (reinterpret_cast<intptr_t>(site) + 5);
+		if (hookRel < INT32_MIN || hookRel > INT32_MAX)
 		{
-			g_pLog->warn("ReconcilePin: failed to hook target-vector builder; "
-			             "target-local fix disabled\n");
-			g_buildAddr = LM_ADDRESS_BAD;
-			g_buildTramp = LM_ADDRESS_BAD;
-			g_buildSize = 0;
+			g_pLog->warn("ReconcilePin: target-vector call redirect out of "
+			             "rel32 range; target-local fix disabled\n");
 			return false;
 		}
-		g_origBuild = reinterpret_cast<BuildTargetFn_t>(g_buildTramp);
-		g_pLog->info("ReconcilePin: hooked target-vector builder at %p "
-		             "(gate ret=%p)\n",
+
+		__builtin_memcpy(g_buildCall, site, sizeof(g_buildCall));
+		uint8_t replacement[5] = {0xE8, 0, 0, 0, 0};
+		const int32_t hookRel32 = static_cast<int32_t>(hookRel);
+		__builtin_memcpy(replacement + 1, &hookRel32, sizeof(hookRel32));
+
+		lm_prot_t oldProt = LM_PROT_NONE;
+		const lm_address_t callAddr =
+		    reinterpret_cast<lm_address_t>(const_cast<uint8_t*>(site));
+		if (!LM_ProtMemory(callAddr, sizeof(replacement), LM_PROT_XRW, &oldProt)
+		    || LM_WriteMemory(callAddr, replacement, sizeof(replacement))
+		           != sizeof(replacement))
+		{
+			g_pLog->warn("ReconcilePin: failed to redirect target-vector call; "
+			             "target-local fix disabled\n");
+			return false;
+		}
+		LM_ProtMemory(callAddr, sizeof(replacement), oldProt, nullptr);
+
+		g_origBuild = reinterpret_cast<BuildTargetFn_t>(builderAddr);
+		g_buildAddr = callAddr;
+		g_buildSize = sizeof(replacement);
+		g_pLog->info("ReconcilePin: redirected target-vector call at %p "
+		             "(builder=%p)\n",
 		             reinterpret_cast<void*>(g_buildAddr),
-		             reinterpret_cast<void*>(g_buildRet));
+		             reinterpret_cast<void*>(builderAddr));
 		return true;
 	}
 
@@ -330,14 +369,17 @@ namespace ReconcilePin
 
 	void remove()
 	{
-		if (g_buildSize && g_buildAddr != LM_ADDRESS_BAD
-		    && g_buildTramp != LM_ADDRESS_BAD)
+		if (g_buildSize && g_buildAddr != LM_ADDRESS_BAD)
 		{
-			LM_UnhookCode(g_buildAddr, g_buildTramp, g_buildSize);
+			lm_prot_t oldProt = LM_PROT_NONE;
+			if (LM_ProtMemory(g_buildAddr, g_buildSize, LM_PROT_XRW, &oldProt))
+			{
+				LM_WriteMemory(g_buildAddr, g_buildCall, g_buildSize);
+				LM_ProtMemory(g_buildAddr, g_buildSize, oldProt, nullptr);
+			}
 		}
 		g_origBuild = nullptr;
 		g_buildAddr = LM_ADDRESS_BAD;
-		g_buildTramp = LM_ADDRESS_BAD;
 		g_buildSize = 0;
 
 		if (g_size && g_addr != LM_ADDRESS_BAD && g_tramp != LM_ADDRESS_BAD)

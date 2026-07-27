@@ -101,6 +101,7 @@ namespace Patterns
 		extern Pattern_t ProcessDepotManifest;
 		extern Pattern_t PrepareDepotDownload;
 		extern Pattern_t BuildDepotDependency;
+		extern Pattern_t BuildDepotTargetCall;
 		extern Pattern_t EvaluateConfigChanges;
 	}
 
