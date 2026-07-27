@@ -1,4 +1,4 @@
-Repository: /home/fatex0/slssteam-ronin
+Repository: https://github.com/FATEx0/slssteam-ronin
 Commit: bfd5d219cd7882e3d270e5416ab67214da5d367a
 Working-tree stability delta:
 - App-info provisioning runs in the package-contained `sls-prelaunch`
