@@ -68,6 +68,21 @@ controls, copy browser cookies, or pretend SteamDB exposes a supported API.
 Coverage is only the set of builds and depot histories that SteamDB rendered
 successfully during that user-triggered collection.
 
+## Managed DLC quarantine
+
+Ronin observes Steam's optional chunk-unpack callbacks for definitive
+decryption failures on Lua-managed DLC depots. Three distinct failed chunks
+bind a quarantine decision to the exact 32-byte depot key. The affected DLC
+app/depot is then omitted from both the target install plan and package-0
+reconciliation so Steam does not immediately add and retry it again.
+
+Base and shared depots are never quarantined by this policy. Decisions persist
+under SLSsteam's cache directory, but a changed key, removed Lua source, or
+lost DLC classification releases them. Both callback patterns are optional:
+signature drift disables new quarantine learning without changing Steam's
+download path. This is a mitigation for demonstrably unusable add-on keys, not
+a general response to network, disk, or provider failures.
+
 ## Repository ownership and layout
 
 Ronin is the single source repository for both the native fork and its complete

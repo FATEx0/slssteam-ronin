@@ -103,6 +103,8 @@ namespace Patterns
 		extern Pattern_t BuildDepotDependency;
 		extern Pattern_t BuildDepotTargetCall;
 		extern Pattern_t EvaluateConfigChanges;
+		extern Pattern_t OnChunkUnpackedStack;
+		extern Pattern_t OnChunkUnpackedReg;
 	}
 
 	namespace CUserAppManager

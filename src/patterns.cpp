@@ -231,6 +231,26 @@ namespace Patterns
 			"8B 10 8B 52 4C 39 DA 0F 85",
 			SigFollowMode::None
 		};
+		// Structured chunk-completion callbacks. Steam reaches these before it
+		// formats the content-log line, while the unpack result is still
+		// available. The cdecl and regparm(3) compiler variants are optional
+		// and independently guarded.
+		Pattern_t OnChunkUnpackedStack
+		{
+			"CDepotDownloadMgr::OnChunkUnpacked[cdecl]",
+			"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 81 EC 7C 04 "
+			"00 00 8B 45 0C 8B 7D 08 89 85 90 FB FF FF 8B 45 10 89 "
+			"85 8C FB FF FF",
+			SigFollowMode::None
+		};
+		Pattern_t OnChunkUnpackedReg
+		{
+			"CDepotDownloadMgr::OnChunkUnpacked[regparm3]",
+			"55 89 E5 57 E8 ? ? ? ? 81 C7 ? ? ? ? 56 89 C6 53 81 EC "
+			"7C 04 00 00 8B 45 0C 89 95 90 FB FF FF 89 8D 8C FB FF "
+			"FF 89 85 94 FB FF FF",
+			SigFollowMode::None
+		};
 		Pattern_t EvaluateConfigChanges
 		{
 			"CDepotDownloadMgr::EvaluateConfigChanges",
@@ -360,6 +380,10 @@ namespace Patterns
 			 *     Missing patterns disable only their guarded hook, but the
 			 *     complete pinning acceptance test must pass before claiming
 			 *     manifest pinning works on a new Steam build.
+			 *   OnChunkUnpackedStack + OnChunkUnpackedReg
+			 *     observe definitive managed-DLC decryption failures. Either
+			 *     ABI variant may resolve; neither resolving disables only
+			 *     quarantine learning.
 			 *
 			 * Parental override:
 			 *   ParentalSettingsReceived + ParentalSignatureCheck
@@ -383,6 +407,8 @@ namespace Patterns
 			CDepotDownloadMgr::BuildDepotDependency.optional = true;
 			CDepotDownloadMgr::BuildDepotTargetCall.optional = true;
 			CDepotDownloadMgr::EvaluateConfigChanges.optional = true;
+			CDepotDownloadMgr::OnChunkUnpackedStack.optional = true;
+			CDepotDownloadMgr::OnChunkUnpackedReg.optional = true;
 		}
 	} optionalPatternSetup;
 }

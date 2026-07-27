@@ -213,3 +213,59 @@ engine and avoid importing Moon wrapper/desktop code.
 
 Retire the CEF contract only if the standardized Ronin host interface provides
 an equivalent declaration and runtime channel.
+
+## RONIN-CONTENT-2: unusable managed-DLC quarantine
+
+**Requirement**
+
+Keep a managed DLC/add-on from repeatedly poisoning Steam's content-source
+state when its Lua-supplied depot key definitively fails chunk decryption.
+Only the affected DLC may be omitted; base, shared, and unrelated content must
+remain eligible. Replacing or withdrawing the bad key must release the
+quarantine automatically.
+
+**Why upstream does not satisfy it**
+
+AceSLS does not consume Lua-managed depot keys and therefore cannot distinguish
+this ecosystem's bad-key failure from an ordinary transient content failure.
+
+**Implementation**
+
+- Adapted from `swwayps/slsteam-moon` commit `1022c9f`
+- `src/feats/depotquarantine.*` — optional callback observation and policy
+- `src/feats/depotquarantine_store.hpp` — key-bound persistent decisions
+- Target-only filtering in `manifestbind` plus package-0 reconciliation
+
+**Acceptance**
+
+- `tools/test_depotquarantine.cpp`
+- `tools/test_depotquarantine_store.cpp`
+- DLC classification regression coverage
+- Both private callback patterns fail closed when unavailable
+- Controlled live bad-key test confirms only the affected DLC is omitted,
+  unrelated downloads remain usable, and a replacement key releases it
+
+**Upstream overlap**
+
+Continue using upstream's download and package engine. The callback patterns
+and private object offsets are Steam-build compatibility seams and must follow
+the maintenance procedure in `docs/RONIN.md`. Quarantine must remain inside
+Ronin's target-only planner path; never broaden it to the active/public
+comparison path used by historical manifest pins.
+
+**Retirement**
+
+Retire if the Lua key source gains authoritative validation before launch or
+AceSLS exposes an equivalent scoped bad-key policy.
+
+## Explicitly excluded Moon integration
+
+Moon's desktop guardian, Debian launcher repair, systemd user-manager fallback,
+and other Lumen-owned Steam supervision are not Ronin patches. Tsuki owns Steam
+startup and restart through the generic launch-extension lifecycle; importing a
+second supervisor would violate that boundary.
+
+Moon's file queue under `~/.local/share/Lumen/notifications/` is also not
+ported. User-facing Gamepad notifications are a useful outcome, but Ronin will
+deliver them through a declared host interface rather than depending directly
+on Lumen.

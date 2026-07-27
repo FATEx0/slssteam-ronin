@@ -24,6 +24,7 @@
 
 #include "feats/achievements.hpp"
 #include "feats/apps.hpp"
+#include "feats/depotquarantine.hpp"
 #include "feats/dlc.hpp"
 #include "feats/misc.hpp"
 #include "feats/manifestcode.hpp"
@@ -1189,6 +1190,7 @@ bool Hooks::setup()
 	Hooks::place();
 	PackagePatch::setup();
 	ManifestBind::setup();
+	DepotQuarantine::setup();
 	ReconcilePin::setup();
 	Parental::setup();
 	//This is unnecessary but I'll keep this for now in case I wanna improve error checks
@@ -1236,6 +1238,7 @@ void Hooks::remove()
 {
 	Parental::remove();
 	ReconcilePin::remove();
+	DepotQuarantine::remove();
 	ManifestBind::remove();
 	PackagePatch::remove();
 

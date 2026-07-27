@@ -50,6 +50,11 @@ test-manifestpin-patterns:
 		-o /tmp/test_manifestpin_patterns
 	/tmp/test_manifestpin_patterns "$(STEAMCLIENT)"
 
+test-depotquarantine-patterns:
+	g++ -std=c++20 tools/test_depotquarantine_patterns.cpp \
+		-o /tmp/test_depotquarantine_patterns
+	/tmp/test_depotquarantine_patterns "$(STEAMCLIENT)"
+
 tools:
 	make -j 2 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber
 
@@ -140,4 +145,5 @@ build: audit-libs tools
 rebuild: clean build
 release: rebuild zips
 
-.PHONY: audit-libs ronin-module test-manifestpin-patterns tools build clean rebuild zips
+.PHONY: audit-libs ronin-module test-manifestpin-patterns \
+	test-depotquarantine-patterns tools build clean rebuild zips
