@@ -123,41 +123,15 @@ namespace
 		}
 	}
 
-	// The fix: on the TARGET call for a LOCKED app, force each pinned depot's
-	// target gid to the pin so the reconcile sees active(pinned)==target(pin)
-	// once the downgrade has committed (no loop), while a still-public install
-	// (active=public != target=pin) still triggers the one downgrade.
-	void applyTargetPin(void* ctxv, uint32_t appId, uint32_t flags)
-	{
-		if (!g_pinActive) return;
-		if (!(flags & kFlagTargetSide)) return;       // target/appinfo side only
-		if (!g_config.isAppLocked(appId)) return;
-
-		auto* ctx = reinterpret_cast<uint8_t*>(ctxv);
-		auto* base = *reinterpret_cast<uint8_t* const*>(ctx + kCtxDepotPtrOff);
-		const int32_t count =
-		    *reinterpret_cast<const int32_t*>(ctx + kCtxDepotCountOff);
-		if (!base || count <= 0 || count > kMaxDepots) return;
-
-		auto* e = base;
-		for (int32_t i = 0; i < count; ++i, e += kDepotEntryStride)
-		{
-			const uint32_t depotId = *reinterpret_cast<const uint32_t*>(e);
-			const uint64_t pin = g_config.getManifestPin(depotId);
-			if (!pin) continue;
-			applyPinnedEntry("ctx", appId, e, depotId, pin);
-		}
-	}
-
 	// --- the TARGET-LOCAL fix (the -0x90(ebp) CUtlVector) -----------------
 	//
-	// applyTargetPin above rewrites the gid in the ctx vector ([ctx+0x78]).
-	// For some apps that vector already holds the pin and the DIVERGENT
-	// (still-public) gid the reconcile actually compares against lives in a
-	// FUNCTION-LOCAL CUtlVector at -0x90(ebp) instead — which an entry hook
-	// cannot reach (it isn't built yet at the prologue).  Live trace, app
-	// 3525970: [ctx+0x78]=pin (no rewrite) but the local=public -> mismatch ->
-	// perpetual "updated depots" loop while installing.
+	// The appinfo-derived target used by EvaluateConfigChanges lives in a
+	// FUNCTION-LOCAL CUtlVector at -0x90(ebp). Patch that vector only after
+	// its dedicated builder has populated it. Do not rewrite [ctx+0x78] at
+	// function entry: live validation of app 2723430 showed that storage can
+	// alias Steam's active/installed vector. Mutating it made Steam compare
+	// pin against pin, commit the historical gid without downloading the
+	// historical content, and report a false successful validation.
 	//
 	// That local is filled by a shared appinfo->depot-vector builder.
 	// The builder receives &targetVec as an argument and the appId. Redirecting
@@ -221,9 +195,9 @@ namespace
 		return r;
 	}
 
-	// Resolve + hook the target-vector builder, derived from EvalAddr.  Returns
-	// false (and installs nothing) on any drift so the loop fix degrades to the
-	// ctx-vector patch alone rather than hooking a wrong address.
+	// Resolve + hook the target-vector builder, derived from EvalAddr. Returns
+	// false (and installs nothing) on any drift; pin reconciliation then
+	// degrades to observation-only rather than risking the active vector.
 	bool installBuildTargetHook(lm_address_t evalAddr)
 	{
 		const auto* site = reinterpret_cast<const uint8_t*>(evalAddr)
@@ -301,7 +275,6 @@ namespace
 				    *reinterpret_cast<const int32_t*>(c + kCtxDepotCountOff);
 				traceLog(appId, flags, base, count);
 			}
-			applyTargetPin(ctx, appId, flags);
 		}
 		return g_orig(mgr, ctx, a1, a2);
 	}
@@ -356,10 +329,10 @@ namespace ReconcilePin
 		             reinterpret_cast<void*>(g_addr),
 		             static_cast<int>(g_pinActive), static_cast<int>(g_trace));
 
-		// Also patch the appinfo-derived TARGET local (the -0x90(ebp)
-		// CUtlVector) via a caller-gated hook on its builder, for apps whose
-		// divergent gid lives there instead of in [ctx+0x78].  Only meaningful
-		// when the gid rewrite is on; a drift degrades to the ctx-vector patch.
+		// Patch only the appinfo-derived TARGET local (the -0x90(ebp)
+		// CUtlVector) via a caller-gated hook on its builder. The context
+		// vector is intentionally observation-only because it can alias the
+		// active/installed side.
 		if (g_pinActive)
 		{
 			installBuildTargetHook(g_addr);

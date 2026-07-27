@@ -127,6 +127,12 @@ integration.
 - `bfd5d21` — target-only planner redirection, archived manifest
   normalization/storage, historical build resolution, and Ronin control/UI
   integration
+- `src/feats/reconcilepin.cpp` patches only the appinfo-derived target vector
+  after its dedicated builder has populated it. The entry context vector is
+  observation-only: live Linux testing showed it can alias Steam's
+  active/installed state. Rewriting that vector made the active and target
+  GIDs equal before planning, producing a metadata-only false success without
+  installing the historical files.
 
 **Acceptance**
 
@@ -135,6 +141,12 @@ integration.
 - Restart retains the historical manifest without an update loop
 - Clearing the pin validates back to public content
 - Missing patterns, sizes, keys, or manifests fail closed
+
+Live Linux acceptance for app `2723430`, public depot
+`4105671086490885582` to historical depot `4449340589420685266`, downloaded
+271,086,368 bytes and committed 52 updated/3 deleted files. A clean restart
+did not schedule another update. Clearing the pin downloaded 342,204,944
+bytes back to the public manifest and committed 53 updated/2 deleted files.
 
 **Upstream overlap**
 
