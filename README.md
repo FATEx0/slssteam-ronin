@@ -1,60 +1,113 @@
-# **SLSsteam - Steamclient Modification for Linux**
-![](https://github.com/AceSLS/SLSsteam/blob/dev/res/banner.png?raw=true "SLSsteam")
+# SLSsteam Ronin
 
-## Index
+SLSsteam Ronin is an upstream-first SLSsteam variant and a self-contained
+[Ronin module](module/) for Tsuki.
 
-1. [Getting started](#getting-started)
-2. [Hall of Fame 👑](#hall-of-fame-aka-credits)
-3. [Hall of Shame 🚨](#hall-of-shame-aka-scammers-leechers-etc)
-4. [Support](#support)
-5. [Related Projects](#related-projects)
+It keeps [AceSLS/SLSsteam](https://github.com/AceSLS/SLSsteam) as its
+authoritative engine while carrying a small, documented downstream patch
+series for Lua-managed applications, content provisioning, historical manifest
+selection, and Tsuki integration.
 
-## Getting started
+> **Development status**
+>
+> Ronin hooks private 32-bit Steam implementation details. Steam updates can
+> disable optional features until their patterns and object assumptions are
+> revalidated. This repository is under active development and is not yet a
+> general-purpose portable release.
 
-Check out the [Installation](https://github.com/AceSLS/SLSsteam/wiki/Installation) or the [Building from Source](https://github.com/AceSLS/SLSsteam/wiki/Building-from-Source) section in our Wiki!
+## Choose the right branch
 
+| Branch | Purpose |
+| --- | --- |
+| `ronin/main` | Ronin product branch. Build, package, test, and release from here. |
+| `main` | Clean mirror of `AceSLS/SLSsteam/main`. Do not add Ronin commits here. |
 
-## Hall of Fame aka Credits
+A Ronin patch reaches `main` only after AceSLS accepts equivalent behavior
+upstream. Upstream updates are fast-forwarded into `main`, then the ordered
+Ronin patch series is rebased onto that new base.
 
-Contributors:
-- [Parasitic-Hollow](https://github.com/Parasitic-Hollow/): Fixing gamepad issues caused by FakeAppIds & maintaining SLSsteam in my absence
-- [exefer](https://github.com/exefer): Fixing playtime getting deleted on Steamclient restart for refunded games
-- [dankrr](https://github.com/dankrr): Fixing non-steam game's rich presence
-- [amione](https://github.com/xamionex/): Creating the SLSsteam banner & logo the instant he found out I was looking around for one <3
-- [DeveloperMikey](https://github.com/DeveloperMikey): Added Nix support
-- [skrimix](https://github.com/skrimix): Added flatpak support
-- thismanq: Informing me that DisableFamilyShareLockForOthers is possible
+## What Ronin adds
 
-Others:
-- All the staff members of the Anti Denuvo Sanctuary for all their hard work they do. They also found a way to use SLSsteam I didn't even intend to, so shoutout to them
-- Riku_Wayfinder: Being extremely supportive and lightening my workload by a lot. So show him some love my guys <3
-- Gnanf: Helping me test the Family Sharing bypass
-- rdbo: For his great libmem library, which saved me a lot of development and learning time
-- jbeder: For the awesome yaml-cpp library which allowed me to easily add a configuration file
-- oleavr and all the other awesome people working on Frida for easy instrumentation which helps a lot in analyzing, testing and debugging
-- All the folks working on Ghidra, this was my first project using it and I'm in love with it!
-- And many more I can't possibly list here for reporting bugs and giving feedback! Thank you guys <3
+- Discovery of Lua-managed games from `stplug-in/*.lua` and
+  `luaappids.yaml`, including runtime changes.
+- App-info reconstruction and provisioning for added games.
+- Native CM/PICS product-data retrieval with bounded fallbacks.
+- Depot-key, manifest download, staging, persistence, and synthesis support.
+- Historical per-depot manifest selection through the module-owned Manifest
+  Pins view and browser-assisted history collector.
+- Added-game achievements, player statistics, compatibility-tool selection,
+  and parental-policy integration.
+- Managed-DLC quarantine for repeatedly undecryptable Lua-supplied depot keys.
+- A dynamic CEF-port contract consumed by the generic Tsuki host.
+- A complete Ronin module package built from the same revision as the native
+  payload.
 
+The authoritative downstream inventory, acceptance requirements, and
+retirement conditions live in [docs/PATCHES.md](docs/PATCHES.md).
 
-## Hall of Shame aka Scammers, Leechers, etc
+## Repository layout
 
-🚨This list exists purely for educational and entertainment purposes!
-Please do not seek out Projects listed here!
-If you decide to ignore the aforementioned warning you do so on your own risk!🚨
+```text
+src/       AceSLS engine plus the ordered Ronin patches
+tools/     build helpers, collectors, and regression tests
+module/    complete self-contained Ronin module package
+docs/      architecture, patch ledger, and upstream workflow
+```
 
-OnetapBeta by Hammer Steam: Resells Steamless & SLSsteam. Intellectually went far enough to rename SLSsteam to deckloader2, that's about as far as their skill extends.
+`module/` is the canonical package source. Tsuki may contain a deployed
+compatibility copy, but SLSsteam behavior and package metadata must be changed
+in this repository.
 
-## Support
+## Build and validate
 
-Please do not treat the issue tracker like a private support hotline!
-Feel free to join our [Discord](https://discord.gg/j3ZzjeV4eQ) instead.
+Enter the repository's declared Nix development environment and build the
+native payload plus package-owned helpers:
 
-## Related Projects
+```sh
+nix develop
+make audit-libs
+```
 
-[h3adcr-b](https://github.com/Deadboy666/h3adcr-b) & [h3adcr-b-wiki](https://github.com/Deadboy666/h3adcr-b/wiki/): Universal SLSsteam installer & steamclient downgrader
+Build the complete staged module:
 
-[steamnetsock-patch](https://github.com/yesyes0649/steamnetsock-patch) & [eos-proxy](https://github.com/yesyes0649/eos-proxy): Makes FakeAppIds work in some games where it otherwise wouldn't
+```sh
+make ronin-module
+```
 
-[CloudRedirect](https://github.com/Selectively11/CloudRedirect): Enables Steam Cloud, playtime & achievement sync on unowned games
+The current Steam client pattern checks are:
 
-[SteamDB App Parser](https://greasyfork.org/en/scripts/543010-steamdb-app-parser): Vibecoded script that adds a button on SteamDB Game's pages to generate AdditionalApps & DlcData
+```sh
+make test-manifestpin-patterns
+make test-depotquarantine-patterns
+```
+
+The package should also be validated with Tsuki's Ronin module SDK before
+deployment. See [docs/RONIN.md](docs/RONIN.md) for the complete architecture
+and Steam-update acceptance procedure.
+
+## Maintenance
+
+- [Downstream patch ledger](docs/PATCHES.md)
+- [Upstream synchronization workflow](docs/UPSTREAMING.md)
+- [Ronin architecture and package notes](docs/RONIN.md)
+- [Packaged source provenance](module/SOURCE)
+
+Do not merge `ronin/main` into `main`. To synchronize a new Ace release,
+fast-forward `main`, rebase the downstream series in ledger order, run the
+affected tests, rebuild `module/`, and record the new provenance.
+
+## Upstream and credits
+
+Ronin exists because of the work in
+[AceSLS/SLSsteam](https://github.com/AceSLS/SLSsteam). Its original project
+credits, license, and upstream documentation remain authoritative for the
+engine inherited here.
+
+Selected Lua-ecosystem behavior was adapted from
+[swwayps/slsteam-moon](https://github.com/swwayps/slsteam-moon). Moon is a
+behavioral reference, not Ronin's source base; its Lumen-specific launcher,
+desktop guardian, and private notification transport are deliberately not
+part of Ronin.
+
+See [docs/LICENSE](docs/LICENSE) and the source-file SPDX declarations for
+licensing details.
