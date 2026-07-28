@@ -129,12 +129,13 @@ constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 	};
 
 	bool g_fallbackEnabled = true;
-	// Patch the depot gid in the install plan so Steam commits the pinned build
-	// for LOCKED apps.  DEFAULT ON: the pin is config-driven (ManifestPins
-	// locked apps), no longer env-gated; a non-pinned depot is a no-op because
-	// getManifestPin returns 0.  The post-commit reconcile applies the pinned
-	// target so update-check/plan/commit/reconcile agree on the pinned gid and
-	// it no longer loops.  SLSSTEAM_PIN_PLANNER=0 is an explicit opt-out for testing.
+	// Patch the target plan so Steam downloads and commits the pinned manifest.
+	// ReconcilePin patches the comparison target and prevents a completed pin
+	// from being treated as an update, but it cannot choose the acquisition
+	// target by itself. Both hooks are required. Shared/runtime depots are kept
+	// out of ManifestPins by the app-level resolver, rather than disabling this
+	// acquisition hook for every ordinary game depot.
+	// SLSSTEAM_PIN_PLANNER=0 remains a diagnostic opt-out.
 	bool g_pinPlanner = true;
 
 	// Event-driven manifest staging state. BuildDepotDependency sees the exact

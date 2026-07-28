@@ -267,7 +267,7 @@ with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
             "payload": {"appid": "600", "build_id": "10"},
         })
         assert receive(peer)["payload"]["depots"] == {
-            "800": "300", "900": "900", "902": "990", "910": "1100",
+            "800": "300", "900": "900", "902": "990",
         }
         send(peer, {
             "v": 1, "t": "req", "id": "11",
@@ -275,7 +275,7 @@ with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
             "payload": {"appid": "600", "build_id": "9"},
         })
         assert receive(peer)["payload"]["depots"] == {
-            "800": "200", "900": "900", "902": "990", "910": "1000",
+            "800": "200", "900": "900", "902": "990",
         }
 
         valid_composite_cache = cache.read_bytes()

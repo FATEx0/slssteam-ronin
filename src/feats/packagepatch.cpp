@@ -101,7 +101,7 @@ namespace
 			return;
 		}
 
-		CUser* user = g_pSteamEngine ? g_pSteamEngine->getUser(0) : nullptr;
+		CUser* user = getLocalUser();
 		if (user == nullptr)
 		{
 			// No usable CUser yet (very early on a cold cache, before
@@ -197,6 +197,19 @@ namespace
 
 		std::vector<uint32_t> fresh;
 		fresh.reserve(ids.size());
+
+		// The set tracks entries Ronin appended during this process, but the
+		// package vector already contains Valve-owned apps and depots. Treat
+		// those as present too. Appending a shared Steamworks depot a second
+		// time makes Steam report "config changed" after every zero-byte
+		// commit and immediately schedule the same update again.
+		if (vec.m_Memory.m_pMemory)
+		{
+			for (uint32_t i = 0; i < vec.m_Size; ++i)
+			{
+				seenSet.insert(vec.m_Memory.m_pMemory[i]);
+			}
+		}
 		for (uint32_t id : ids)
 		{
 			if (id && !seenSet.count(id))

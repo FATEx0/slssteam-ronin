@@ -1074,33 +1074,10 @@ std::string dispatch(const std::string& method, const Json& payload)
 					break;
 				}
 			}
-			if (const Json* shared = cache.get("shared_depot_histories"))
-			{
-				if (shared->kind != Json::Array)
-					throw std::runtime_error("invalid shared depot history cache");
-				for (const Json& history : shared->array)
-				{
-					const uint32_t depot = decimal32(history.get("depot_id"), "cached shared depot id");
-					const Json* manifests = history.get("manifests");
-					if (!manifests || manifests->kind != Json::Array)
-						throw std::runtime_error("invalid shared manifest history");
-					bool selected = false;
-					for (const Json& manifest : manifests->array)
-					{
-						const std::string seen = requiredString(
-						    manifest.get("seen_at"), "cached shared manifest timestamp");
-						if (!upperTime.empty() && seen >= upperTime) continue;
-						const uint64_t gid = decimal64(
-						    manifest.get("manifest_id"), "cached shared manifest gid");
-						if (!resolved.emplace(depot, gid).second)
-							throw std::runtime_error("depot appears in multiple histories");
-						selected = true;
-						break;
-					}
-					if (!selected)
-						throw std::runtime_error("shared depot history does not cover target build");
-				}
-			}
+			// Keep shared/runtime history as observation data, but never turn it
+			// into a game pin. The owner app controls one global installation;
+			// pinning it for a dependent game conflicts with that owner's
+			// public update and every other game using the same runtime.
 			return "{\"appid\":" + quote(std::to_string(appid))
 			    + ",\"build_id\":" + quote(std::to_string(wanted))
 			    + ",\"published_at\":" + quote(targetTime)
