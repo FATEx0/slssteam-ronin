@@ -105,7 +105,8 @@ echo "==> launching Tsuki against the fresh module (real Steam login, unchanged 
 cd "$tsuki_root"
 TSUKI_LUA_DIR="$tsuki_root/lua" \
 TSUKI_RONIN_MODULE_DIR="$root/modules" \
-nohup "$tsuki_root/bin/tsuki" >"$root/tsuki.log" 2>&1 &
+setsid nohup "$tsuki_root/bin/tsuki" \
+	9>&- </dev/null >"$root/tsuki.log" 2>&1 &
 tsuki_pid=$!
 echo "$tsuki_pid" >"$root/tsuki.pid"
 echo "==> Tsuki started, pid $tsuki_pid, log: $root/tsuki.log"
