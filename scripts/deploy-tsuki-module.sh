@@ -21,7 +21,11 @@ module_root=$tsuki_root/modules
 target=$module_root/slsteam
 rollback_root=$tsuki_root/.ronin-rollback
 rollback=$rollback_root/slsteam
-validator=$tsuki_root/ronin-module-sdk/tools/ronin_validate.py
+# ronin-module-sdk is its own project now, not nested under tsuki_root
+# (moved 2026-07-28). Default to a sibling of tsuki_root; override with
+# RONIN_SDK_ROOT if your checkout layout differs.
+sdk_root=${RONIN_SDK_ROOT:-$(CDPATH= cd -- "$tsuki_root/.." && pwd)/ronin-module-sdk}
+validator=$sdk_root/tools/ronin_validate.py
 
 [ -f "$repo_root/module/module.json" ] || {
 	echo "canonical package is missing: $repo_root/module" >&2
@@ -32,7 +36,7 @@ validator=$tsuki_root/ronin-module-sdk/tools/ronin_validate.py
 	exit 1
 }
 [ -f "$validator" ] || {
-	echo "Tsuki Ronin validator is missing: $validator" >&2
+	echo "Ronin validator is missing: $validator (set RONIN_SDK_ROOT if ronin-module-sdk isn't a sibling of $tsuki_root)" >&2
 	exit 1
 }
 

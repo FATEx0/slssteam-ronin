@@ -65,6 +65,53 @@ wholesale with an older Moon copy.
 Retire only if AceSLS gains an extensible source adapter that can express the
 same LuaTools discovery and runtime reconciliation semantics.
 
+## RONIN-CONFIG-2: stable native Date Added metadata
+
+**Requirement**
+
+Make Steam's native Date Added sorting meaningful for discovered applications
+without changing their date whenever a source file is edited or rewritten.
+
+**Why upstream does not satisfy it**
+
+AceSLS can apply an explicit `SubscriptionTimestamps` map to ownership records,
+but it does not assign or persist timestamps for applications discovered
+through Ronin's `stplug-in` and `luaappids.yaml` adapters.
+
+**Implementation**
+
+- `src/feats/firstseen.hpp` owns the pure first-discovery and precedence rules.
+- `sls-prelaunch` reconciles active AppIDs into
+  `<config>/cache/ronin-first-seen.yaml` before Steam starts.
+- Runtime source reload records newly discovered AppIDs without resetting
+  existing or removed entries.
+- `SubscriptionTimestamps` remains authoritative. Automatic first-seen values
+  fill only active discovered AppIDs without an explicit override.
+- The injected module reads the cache but does not rewrite it during its
+  loader-time initial configuration pass.
+
+**Acceptance**
+
+- `tools/test_firstseen.cpp`
+- Existing timestamps survive ordinary reloads, removal, and restoration.
+- A new AppID receives the current timestamp exactly once.
+- Explicit `SubscriptionTimestamps` override automatic values.
+- Malformed cache data fails closed without overwriting the cache.
+- Live Steam library sorting places a newly discovered game according to its
+  recorded first-seen time and keeps that order after editing its source.
+
+**Upstream overlap**
+
+Continue using upstream's ownership-record application of
+`SubscriptionTimestamps`. This patch supplies only the missing Ronin discovery
+and persistence layer.
+
+**Retirement**
+
+Retire if the eventual Ronin-native application importer owns durable install
+metadata and supplies an equivalent timestamp through a standard module
+interface.
+
 ## RONIN-CONTENT-1: Lua-added application content pipeline
 
 **Requirement**
@@ -226,6 +273,51 @@ engine and avoid importing Moon wrapper/desktop code.
 Retire the CEF contract only if the standardized Ronin host interface provides
 an equivalent declaration and runtime channel.
 
+## RONIN-COMPAT-1: Steam compatibility hash refresh
+
+**Requirement**
+
+Refresh the known `steamclient.so` hash list without inheriting Steam's loader
+injection into the external TLS client, while preserving the user's normal
+proxy, DNS, certificate, and home-directory environment. A failed refresh must
+fall back to the cached list with an actionable diagnostic.
+
+**Why upstream does not satisfy it**
+
+The inherited curl launcher replaces the complete environment with a malformed
+quoted `PATH`, omits a real `argv[0]`, and reports only an unexplained numeric
+result. This fails on the Nix host and hides whether the live check used fresh
+or cached compatibility data.
+
+**Implementation**
+
+- `src/curl.cpp` — valid curl invocation, bounded redirects/timeouts, standard
+  executable locations, inherited user environment with loader variables
+  removed.
+- `src/update.cpp` — source-specific refresh, empty-response, cache-fallback,
+  and parse diagnostics.
+
+**Acceptance**
+
+- Fetch the authoritative hash list with HOME/certificate resolution intact
+  and Steam loader variables present in the parent.
+- HTTP failure and empty response do not replace a usable cached list.
+- A missing executable reports exit code 127 rather than appearing as an empty
+  successful response.
+- Live Ronin startup identifies whether fresh or cached compatibility data was
+  used.
+
+**Upstream overlap**
+
+Prefer an equivalent upstream subprocess/environment fix if AceSLS adopts one.
+Do not move TLS back into the audited Steam process merely to remove this
+adapter.
+
+**Retirement**
+
+Retire when upstream provides an external fetch path with the same environment
+isolation, fallback behavior, and diagnostics.
+
 ## RONIN-CONTENT-2: unusable managed-DLC quarantine
 
 **Requirement**
@@ -282,3 +374,52 @@ Moon's file queue under `~/.local/share/Lumen/notifications/` is also not
 ported. User-facing Gamepad notifications are a useful outcome, but Ronin will
 deliver them through a declared host interface rather than depending directly
 on Lumen.
+
+## RONIN-CONTENT-3: SteamStub ownership-ticket path
+
+**Requirement**
+
+Allow Lua-managed Windows games protected by SteamStub to launch without
+rewriting their executable or requiring an external unpacker.
+
+**Why upstream does not satisfy it**
+
+AceSLS caches ownership tickets and hooks the Linux ticket interface, but a
+failed ticket request for an AdditionalApp is returned unchanged. SteamStub
+therefore rejects the launch even though SLSsteam has made the app and content
+available.
+
+**Implementation**
+
+- `src/feats/steamstub_ticket.hpp` is a pure, bounded constructor for the
+  SteamDRMP ticket layout.
+- `Ticket::forgeSteamStubTicket` scopes the behavior to configured
+  AdditionalApps and uses SLSsteam's existing AppID-7 cache.
+- The existing `GetAppOwnershipTicketExtendedData` hook preserves every
+  successful genuine response. Only a failed response with complete output
+  pointers and sufficient capacity can be replaced.
+- The physical ticket gains the requested four-byte AppID immediately before
+  its signature while the original size and adjusted offsets are returned.
+
+**Acceptance**
+
+- `tools/test_steamstub_ticket.cpp`
+- Ronin module schema validation and 32-bit payload build
+- Controlled live launch of a SteamStub-protected managed game
+- Verify the executable hash is unchanged and no unpacker artifact exists
+
+Accepted live on 2026-07-28 with AppID 250180 (METAL SLUG 3, SteamStub Variant
+2.1). The original executable SHA-256 remained
+`f5f2130896e80ca5b5670dc2cbc4e7e6aa636775af3e8961b1418deeec6e46cd`,
+no Steamless backup or marker was created, and the game started and was
+playable through Proton.
+
+**Upstream overlap**
+
+Prefer an upstream equivalent if AceSLS adopts this narrowly scoped ticket
+behavior. Do not move the logic into Tsuki or inject a helper into game
+processes.
+
+**Retirement**
+
+Retire when upstream supplies equivalent scoped ownership-ticket handling.

@@ -18,13 +18,21 @@ Working-tree stability delta:
 
 Packaged artifacts:
 
-e696867b2d746bfdec9dc63f71f3727cf3e1497b4b5b9f559fd0f86431d9bb68  payload/SLSsteam.so
+4016779e32f2fd39e91fc30f32ce254fd0133c03723d63281e029c84fdacda34  payload/SLSsteam.so
 f2758562bddf8ff4447afe78988c54cde2791518fecf3d2a7bed290b4442e06b  payload/library-inject.so
-8b0bb56399d9bc281a04d45ff25ce7c70153c9d6c3451ff6d76f2c7170d71f9b  payload/sls-prelaunch
-4741937bc087f392147711128d6c215d0ed7bf669f058e82f8ffddaf856f80e4  payload/ronin-control
+9765d1d34357ffc5c9d8d87876ac7e72dc2da439ca5a999b3412dcf1303c41b3  payload/sls-prelaunch
+de5d79ced17028f6a68b641413f11fedce82bc3e7ebfed7d37cdeb86e06d9163  payload/ronin-control
 
-These hashes document the built-in source snapshot. They are not a substitute
-for Ronin's deferred staged third-party installer and provenance database.
+SteamStub ownership is handled inside SLSsteam's existing
+GetAppOwnershipTicketExtendedData hook. When Steam has no genuine ticket for a
+managed added app, SLSsteam derives the response from its cached AppID 7
+ownership ticket and inserts the requested AppID immediately before the
+signature. Genuine successful Steam responses and unmanaged apps are never
+modified. This avoids patching game executables and requires no bundled
+Steamless runtime. The bounded ticket transformer has a native regression test.
+The complete path was also accepted live with AppID 250180 (Metal Slug 3): the
+installed executable remained byte-identical, no backup or patch marker was
+created, and the game reached playable state under Proton.
 
 Manifest history resolution uses the optional browser helper under
 `assets/steamdb-history-extension/`. The helper exports only information
@@ -47,3 +55,24 @@ the selected build to its complete internal depot map, persists the lock, then
 uses the declared `tsuki.steam.app.validate` host import to ask Steam to apply
 the change. Selecting Live removes the lock and validates back to Steam's
 public build. SteamDB history JSON remains an explicit page-level import.
+
+Configuration files are forward-compatible. Missing optional collection
+sections mean an empty collection. Missing scalar settings use their declared
+safe defaults but remain a visible schema-drift warning until Ronin's
+line-scalar transaction writes the complete declared settings set. The Ronin
+settings document must therefore cover every active scalar consumed by
+SLSsteam, including MaxSchemaTries, DisableUpdates, and DumpClientInterfaces.
+Malformed YAML and genuine parsing failures remain user-visible.
+
+Steam's native Date Added value for a discovered application comes from
+`cache/ronin-first-seen.yaml`. The package prelaunch phase records an AppID only
+on its first discovery and retains that history across removal, restoration,
+and source-file edits. Explicit `SubscriptionTimestamps` values override the
+automatic record. The injected module consumes the cache read-only during its
+initial loader-time configuration pass.
+
+The Steam compatibility hash-list refresh runs curl outside Steam's TLS
+process. It inherits the user's proxy, DNS, certificate, and HOME environment
+but removes LD_AUDIT, LD_PRELOAD, and LD_LIBRARY_PATH before exec. Logs name
+the attempted source and clearly distinguish a successful refresh, an empty
+response, a curl failure, cache fallback, and parse failure.

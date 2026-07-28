@@ -4,11 +4,13 @@
   "name": "SLSsteam Ronin",
   "version": "1.0.0",
   "description": "Upstream-first Steam launch extension for added-game support.",
+  "repository": "https://github.com/FATEx0/slssteam-ronin",
   "features": [
     "added-games",
     "manifest-pinning",
     "achievement-schemas",
-    "compatibility-tools"
+    "compatibility-tools",
+    "steamstub-ticket"
   ],
   "capabilities": [
     {

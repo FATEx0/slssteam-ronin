@@ -114,7 +114,7 @@ slssteam-ronin/
 │       ├── sls-prelaunch
 │       └── ronin-control
 ├── scripts/
-│   └── package-tsuki-module.sh
+│   └── deploy-tsuki-module.sh
 ├── build/                     # ignored, intermediate compiler output
 └── dist/                      # ignored, complete installable module archives
 ```
@@ -144,6 +144,27 @@ source.
   `library-inject.so` artifacts. Tsuki must not need a Ronin-specific runtime
   interface.
 - Every ported subsystem must bring its isolated regression tests.
+
+## SteamStub handling
+
+Ronin handles SteamStub through Steam's existing ownership-ticket IPC. It does
+not unpack or rewrite game executables and does not launch Wine, Proton, or an
+external DRM helper.
+
+`IClientUser::GetAppOwnershipTicketExtendedData` is already part of SLSsteam's
+Linux hook surface. A successful genuine Steam response is returned unchanged.
+When that lookup fails for an explicitly managed AdditionalApp, Ronin reuses
+the current user's locally cached AppID-7 ownership ticket and supplies the
+requested AppID through SteamDRMP's off-by-four ticket parsing behavior. An
+unmanaged application can never enter this path.
+
+The pure ticket constructor fails closed for a missing/short source ticket or
+an undersized destination buffer. Its regression test verifies the physical
+buffer, reported size, offsets, AppID insertion, signature preservation, and
+failure cases. Live acceptance on 2026-07-28 launched AppID 250180 (METAL SLUG
+3, SteamStub Variant 2.1) through Proton from the original, byte-identical
+executable. The game was playable; observed resolution behavior was
+Proton-specific and outside Ronin's SteamStub contract.
 
 ## Steam-update compatibility boundary
 
@@ -198,6 +219,8 @@ unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
    - malformed YAML repair and non-throwing scalar conversion
    - repeated atomic-save and source-directory watching
    - runtime added/removed-app reconciliation
+   - durable first-discovery timestamps for Steam's native Date Added sorting;
+     explicit `SubscriptionTimestamps` remain authoritative
 2. Added-app product data
    - app-info provisioning and reconstruction
    - native CM/PICS client with bounded fallbacks
@@ -214,7 +237,7 @@ unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
 ## Deliberately excluded
 
 - Steam launcher wrappers and crash-loop guardian
-- desktop files, autostart, systemd units, and Steamless installation
+- desktop files, autostart, and systemd units
 - Tsuki/Lumen/CloudRedirect launching or branding
 - release updater and combined-stack packaging
 - special module control protocols
