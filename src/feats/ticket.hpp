@@ -1,7 +1,9 @@
 #pragma once
 
 #include "../sdk/steam.hpp"
+#include "steamstub_ticket.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -33,6 +35,10 @@ public:
 
 	void launchApp(const AppId_t appId);
 	void getTicketOwnershipExtendedData(const AppId_t appId);
+	bool forgeSteamStubTicket(
+	    const AppId_t appId,
+	    const size_t outputCapacity,
+	    SteamStubTicket::ForgedTicket& output);
 
 	std::string getEncryptedTicketPath(const AppId_t appId);
 	SavedTicket getCachedEncryptedTicket(const AppId_t appId);

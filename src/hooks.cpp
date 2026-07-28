@@ -865,6 +865,25 @@ static uint32_t hkClientUser_GetAppOwnershipTicketExtendedData
 
 	g_pLog->once("%s(%u)->%u\n", Hooks::IClientUser_GetAppOwnershipTicketExtendedData.name.c_str(), appId, ret);
 
+	// Preserve every genuine response. Only managed AdditionalApps whose
+	// ownership lookup failed are eligible for the SteamStub ticket path.
+	if (ret == 0 && pTicket && pOffAppId && pOffSteamId && pOffSig && pSigSize)
+	{
+		SteamStubTicket::ForgedTicket forged;
+		if (Ticket::forgeSteamStubTicket(appId, ticketSize, forged))
+		{
+			std::memcpy(pTicket, forged.bytes.data(), forged.bytes.size());
+			*pOffAppId = forged.appIdOffset;
+			*pOffSteamId = forged.steamIdOffset;
+			*pOffSig = forged.signatureOffset;
+			*pSigSize = forged.signatureSize;
+			g_pLog->infoOnce(
+			    "SteamStub: supplied local ownership ticket for %u\n",
+			    appId);
+			return forged.reportedSize;
+		}
+	}
+
 	Ticket::getTicketOwnershipExtendedData(appId);
 
 	return ret;

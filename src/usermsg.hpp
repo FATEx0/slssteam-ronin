@@ -42,7 +42,6 @@ enum class UserMsg
 	DownloadAuthUnavailable,   // could not obtain a manifest request code
 	DownloadTimedOut,          // timed out waiting on Steam's servers
 	GamePreparationFailed,     // could not assemble a title's metadata
-	DrmRemovalFailed,          // SteamStub unpack failed; title may not launch
 	LocalStorageError,         // local write/extract failed (disk full / perms)
 
 	// --- configuration ---
@@ -201,14 +200,6 @@ inline UiMessage messageFor(UserMsg m, Lang lang)
 			              "Adicione o jogo novamente pelo LuaTools antes de instalar."
 			            : "AppID {detail} has incomplete install data. Re-add the game "
 			              "through LuaTools before installing.",
-			         Severity::Error };
-
-		case UserMsg::DrmRemovalFailed:
-			return { pt ? "Não foi possível remover o DRM de um jogo, então ele pode "
-			              "não abrir. Tente iniciá-lo de novo; se persistir, "
-			              "reinstale-o."
-			            : "Couldn't remove the game's DRM, so it may not launch. Try "
-			              "starting it again; if it keeps failing, reinstall it.",
 			         Severity::Error };
 
 		case UserMsg::LocalStorageError:

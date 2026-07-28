@@ -132,6 +132,29 @@ void Ticket::getTicketOwnershipExtendedData(const AppId_t appId)
 	oneTimeSteamIdSpoof = steamId;
 }
 
+bool Ticket::forgeSteamStubTicket(
+    const AppId_t appId,
+    const size_t outputCapacity,
+    SteamStubTicket::ForgedTicket& output)
+{
+	if (!g_config.isAddedAppId(appId))
+		return false;
+
+	// App 7 is installed for every Steam account and gives us a locally
+	// cached, correctly signed ownership ticket for the current user. The
+	// SteamDRMP parser accepts the requested AppID inserted immediately
+	// before that ticket's signature when the original size is reported.
+	const SavedTicket source = getCachedTicket(7);
+	if (source.ticket.empty())
+		return false;
+
+	return SteamStubTicket::forge(
+	    source.ticket,
+	    appId,
+	    outputCapacity,
+	    output);
+}
+
 std::string Ticket::getEncryptedTicketPath(const AppId_t appId)
 {
 	std::stringstream ss;

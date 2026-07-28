@@ -66,6 +66,16 @@ test-depotquarantine-patterns:
 		-o /tmp/test_depotquarantine_patterns
 	/tmp/test_depotquarantine_patterns "$(STEAMCLIENT)"
 
+test-steamstub:
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic \
+		tools/test_steamstub_ticket.cpp -o /tmp/test_steamstub_ticket
+	/tmp/test_steamstub_ticket
+
+test-firstseen:
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic \
+		tools/test_firstseen.cpp -o /tmp/test_firstseen
+	/tmp/test_firstseen
+
 tools:
 	make -j 2 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber
 
@@ -157,5 +167,7 @@ rebuild: clean build
 release: rebuild zips
 
 .PHONY: audit-libs ronin-module deploy-tsuki-module rollback-tsuki-module \
-	test-manifestpin-patterns test-depotquarantine-patterns tools build clean \
+	test-manifestpin-patterns test-depotquarantine-patterns test-steamstub \
+	test-firstseen \
+	tools build clean \
 	rebuild zips
