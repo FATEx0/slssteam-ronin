@@ -9,6 +9,23 @@ function element(tag, className, text) {
   return node;
 }
 
+function importIcon() {
+  var icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("width", "20");
+  icon.setAttribute("height", "20");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.innerHTML = "<ellipse cx=\"9\" cy=\"5\" rx=\"6\" ry=\"3\"/>" +
+    "<path d=\"M3 5v6c0 1.7 2.7 3 6 3 1.1 0 2.1-.1 3-.4\"/>" +
+    "<path d=\"M3 11v6c0 1.7 2.7 3 6 3 2.3 0 4.3-.6 5.3-1.5\"/>" +
+    "<path d=\"M18 5v10m0 0-3-3m3 3 3-3\"/>";
+  return icon;
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -174,7 +191,6 @@ function renderTimeline(context, game, pin, container, status) {
     var installedMatch = builds.find(function (build) {
       return sameDepots(build.depots, game.manifests);
     });
-    var hidden = [];
     builds.forEach(function (build, index) {
       var selected = !!pin && String(pin.build_id) === String(build.build_id);
       var badges = [];
@@ -195,19 +211,20 @@ function renderTimeline(context, game, pin, container, status) {
       );
       rows.push(row);
       container.appendChild(row);
-      if (index >= 3 && !selected) {
-        row.hidden = true;
-        hidden.push(row);
-      }
     });
-    if (hidden.length) {
-      var more = element("button", "show-more", "Show " + hidden.length + " older builds");
+
+    var inactive = rows.filter(function (row) {
+      return !row.classList.contains("selected");
+    });
+    if (inactive.length) {
+      inactive.forEach(function (row) { row.hidden = true; });
+      var more = element("button", "show-more", "Show all builds");
       more.type = "button";
       var open = false;
       more.addEventListener("click", function () {
         open = !open;
-        hidden.forEach(function (row) { row.hidden = !open; });
-        more.textContent = open ? "Show fewer builds" : "Show " + hidden.length + " older builds";
+        inactive.forEach(function (row) { row.hidden = !open; });
+        more.textContent = open ? "Show active build only" : "Show all builds";
       });
       container.appendChild(more);
     }
@@ -276,15 +293,16 @@ function render(context, state) {
   });
 
   root.textContent = "";
-  var intro = element("div", "intro");
-  var introText = element("div");
-  introText.appendChild(element("h1", "", "Game Builds"));
-  introText.appendChild(element("p", "",
-    "Choose one complete build for a managed game. Ronin resolves and locks every depot belonging to that build together."));
-  intro.appendChild(introText);
+  var toolbar = element("div", "page-toolbar");
+  var search = element("input", "game-search");
+  search.type = "search";
+  search.placeholder = "Search games";
+  search.autocomplete = "off";
 
-  var importButton = element("button", "import-button", "\u2191 Import history JSON");
+  var importButton = element("button", "import-button");
   importButton.type = "button";
+  importButton.title = "Import history JSON";
+  importButton.appendChild(importIcon());
   var fileInput = element("input");
   fileInput.type = "file";
   fileInput.accept = "application/json,.json";
@@ -322,18 +340,82 @@ function render(context, state) {
   var importWrap = element("div", "import-wrap");
   importWrap.appendChild(importButton);
   importWrap.appendChild(fileInput);
-  intro.appendChild(importWrap);
-  root.appendChild(intro);
+  toolbar.appendChild(search);
+  toolbar.appendChild(importWrap);
+  root.appendChild(toolbar);
   root.appendChild(importStatus);
 
-  var list = element("div", "pin-list");
+  var pinnedSection = element("section", "game-section");
+  var pinnedHeading = element("button", "section-heading");
+  pinnedHeading.type = "button";
+  pinnedHeading.appendChild(element("span", "section-chevron", "\u25be"));
+  pinnedHeading.appendChild(element("span", "section-label", "Pinned"));
+  var pinnedCount = element("span", "section-count");
+  pinnedHeading.appendChild(pinnedCount);
+  var pinnedList = element("div", "pin-list");
+  pinnedSection.appendChild(pinnedHeading);
+  pinnedSection.appendChild(pinnedList);
+
+  var unpinnedSection = element("section", "game-section");
+  var unpinnedHeading = element("button", "section-heading");
+  unpinnedHeading.type = "button";
+  unpinnedHeading.appendChild(element("span", "section-chevron", "\u25be"));
+  unpinnedHeading.appendChild(element("span", "section-label", "Unpinned"));
+  var unpinnedCount = element("span", "section-count");
+  unpinnedHeading.appendChild(unpinnedCount);
+  var unpinnedList = element("div", "pin-list");
+  unpinnedSection.appendChild(unpinnedHeading);
+  unpinnedSection.appendChild(unpinnedList);
+
+  var cards = [];
   managedGames.forEach(function (game) {
-    list.appendChild(gameCard(context, game, pins[String(game.appid)]));
+    var pin = pins[String(game.appid)];
+    var card = gameCard(context, game, pin);
+    cards.push({
+      card: card,
+      pinned: !!pin,
+      search: (String(game.title || "") + " " + String(game.appid)).toLowerCase()
+    });
+    (pin ? pinnedList : unpinnedList).appendChild(card);
   });
-  if (!managedGames.length) {
-    list.appendChild(element("div", "empty", "No managed games discovered."));
+
+  var pinnedEmpty = element("div", "empty compact", "No pinned games.");
+  var unpinnedEmpty = element("div", "empty compact", "No unpinned games.");
+  pinnedList.appendChild(pinnedEmpty);
+  unpinnedList.appendChild(unpinnedEmpty);
+  root.appendChild(pinnedSection);
+  root.appendChild(unpinnedSection);
+
+  function makeCollapsible(section, heading, list) {
+    var collapsed = false;
+    heading.addEventListener("click", function () {
+      collapsed = !collapsed;
+      section.classList.toggle("collapsed", collapsed);
+      list.hidden = collapsed;
+      heading.querySelector(".section-chevron").textContent =
+        collapsed ? "\u25b8" : "\u25be";
+    });
   }
-  root.appendChild(list);
+  makeCollapsible(pinnedSection, pinnedHeading, pinnedList);
+  makeCollapsible(unpinnedSection, unpinnedHeading, unpinnedList);
+
+  function filterGames() {
+    var query = search.value.trim().toLowerCase();
+    var visiblePinned = 0;
+    var visibleUnpinned = 0;
+    cards.forEach(function (item) {
+      var visible = !query || item.search.indexOf(query) !== -1;
+      item.card.hidden = !visible;
+      if (visible && item.pinned) visiblePinned += 1;
+      if (visible && !item.pinned) visibleUnpinned += 1;
+    });
+    pinnedCount.textContent = String(visiblePinned);
+    unpinnedCount.textContent = String(visibleUnpinned);
+    pinnedEmpty.hidden = visiblePinned !== 0;
+    unpinnedEmpty.hidden = visibleUnpinned !== 0;
+  }
+  search.addEventListener("input", filterGames);
+  filterGames();
 }
 
 function mount(context) {

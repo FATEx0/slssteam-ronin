@@ -1,18 +1,34 @@
-:root { color-scheme: dark; font: 14px "Motiva Sans", Arial, sans-serif; color: #d6d7d8; }
+:root { font: 14px "Motiva Sans", Arial, sans-serif; color: #d6d7d8;
+  background: transparent !important; }
 * { box-sizing: border-box; }
-body { margin: 0; background: #25282e; }
-.manifest-pins-page { min-height: 100vh; padding: 18px 20px 30px; }
-h1 { margin: 0 0 6px; color: #fff; font-size: 22px; }
-p { max-width: 720px; margin: 0; color: #9ca4ac; line-height: 1.45; }
+html, body { margin: 0; background: transparent !important; }
+.manifest-pins-page { padding: 2px 2px 24px; }
 button { font: inherit; color: #d6d7d8; }
 button:disabled { opacity: .52; cursor: default; }
-.intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
-  margin-bottom: 8px; }
+.page-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.game-search { min-width: 0; flex: 1 1 auto; height: 38px; padding: 0 12px;
+  border: 1px solid #3c4652; border-radius: 4px; outline: 0;
+  background: #1d2127; color: #e6e9ec; font: inherit; }
+.game-search::placeholder { color: #7f8993; }
+.game-search:focus { border-color: #1a9fff; }
 .import-wrap { flex: 0 0 auto; }
-.import-button { padding: 9px 13px; border: 1px solid rgba(102,192,244,.42);
-  border-radius: 4px; background: #1d6b94; color: #fff; cursor: pointer; }
-.import-button:hover { background: #227eac; }
-.import-message { min-height: 21px; margin: 7px 0 13px; }
+.import-button { width: 38px; height: 38px; display: grid; place-items: center; padding: 0;
+  border: 1px solid #3c4652; border-radius: 4px; background: #1d2127;
+  color: #66c0f4; cursor: pointer; }
+.import-button:hover { border-color: rgba(102,192,244,.55); background: #252c35; color: #9bd7fa; }
+.import-message { min-height: 0; margin: -3px 0 10px; }
+.import-message:empty { display: none; }
+.game-section + .game-section { margin-top: 20px; }
+.section-heading { width: 100%; display: flex; align-items: center; gap: 7px;
+  margin: 0 0 8px; padding: 5px 2px; border: 0; background: transparent;
+  color: #c7d5e0; font-size: 13px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; text-align: left; cursor: pointer; }
+.section-heading:hover { color: #fff; }
+.section-chevron { width: 12px; color: #66c0f4; font-size: 12px; }
+.section-label { flex: 0 1 auto; }
+.section-count { min-width: 20px; padding: 1px 6px; border-radius: 9px;
+  background: #303640; color: #929ca5; font-size: 10px; text-align: center; }
+.game-section.collapsed + .game-section { margin-top: 12px; }
 .pin-list { display: grid; gap: 12px; }
 .pin-card { padding: 14px; border: 1px solid rgba(255,255,255,.08);
   border-radius: 7px; background: rgba(0,0,0,.15); }
@@ -57,8 +73,6 @@ button:disabled { opacity: .52; cursor: default; }
 .empty.compact { padding: 13px; }
 [hidden] { display: none !important; }
 @media (max-width: 620px) {
-  .intro { display: grid; }
-  .import-wrap, .import-button { width: 100%; }
   .game-art { width: 96px; height: 36px; }
   .badges { display: none; }
 }
