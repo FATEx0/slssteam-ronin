@@ -108,7 +108,9 @@ public:
 	{
 		if (!node[name])
 		{
-			//g_pLog->notifyLong("Missing %s in configfile! Using default", name);
+			// Scalar settings are part of the Tsuki <-> SLSsteam transaction
+			// contract. A missing one uses its safe default, but remains visible
+			// as schema drift until Ronin writes the complete declared set.
 			setError(ELoadError::MissingKey);
 			return defVal;
 		}
@@ -133,8 +135,7 @@ public:
 		const auto node = rootNode[name];
 		if (!node)
 		{
-			//g_pLog->notifyLong("Missing %s in configfile! Using default", name);
-			setError(ELoadError::MissingKey);
+			// Missing and explicitly empty collections both mean "no entries".
 			return list;
 		}
 
@@ -169,8 +170,7 @@ public:
 		const auto node = rootNode[name];
 		if (!node)
 		{
-			//g_pLog->notifyLong("Missing %s in configfile! Using default", name);
-			setError(ELoadError::MissingKey);
+			// Missing and explicitly empty collections both mean "no entries".
 			return map;
 		}
 

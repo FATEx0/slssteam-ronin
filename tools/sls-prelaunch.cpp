@@ -14,6 +14,7 @@
 
 int main()
 {
+	setenv("SLSSTEAM_PRELAUNCH", "1", 1);
 	g_pLog = std::unique_ptr<CLog>(CLog::createDefaultLog());
 	if (!g_pLog || !g_config.init())
 		return 3;

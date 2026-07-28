@@ -2,6 +2,7 @@
 #include "config_discovery.hpp"
 #include "confload.hpp"
 #include "config_default.hpp"
+#include "feats/firstseen.hpp"
 
 #include "sdk/IClientApps.hpp"
 
@@ -12,6 +13,8 @@
 #include "yaml-cpp/yaml.h"
 
 #include <cstdint>
+#include <cstdlib>
+#include <ctime>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -108,6 +111,59 @@ bool writeFileTextAtomic(const std::string& path, const std::string& text)
 	if (!error) return true;
 	std::filesystem::remove(temporary, error);
 	return false;
+}
+
+std::string firstSeenPath(const std::string& configDir)
+{
+	return configDir + "/cache/ronin-first-seen.yaml";
+}
+
+FirstSeen::TimestampMap loadFirstSeen(const std::string& path, bool& valid)
+{
+	FirstSeen::TimestampMap result;
+	valid = true;
+	std::string raw;
+	if (!readFileText(path, raw)) return result;
+
+	try
+	{
+		const YAML::Node root = YAML::Load(raw);
+		const YAML::Node apps = root["apps"];
+		if (!apps || !apps.IsMap()) return result;
+		for (const auto& entry : apps)
+		{
+			const AppId_t appId = entry.first.as<AppId_t>(0);
+			const uint32_t timestamp = entry.second.as<uint32_t>(0);
+			if (appId != 0 && timestamp != 0)
+				result[appId] = timestamp;
+		}
+	}
+	catch (...)
+	{
+		valid = false;
+		g_pLog->warn("DateAdded: failed to parse %s; keeping explicit timestamps only\n",
+		             path.c_str());
+	}
+	return result;
+}
+
+bool saveFirstSeen(const std::string& path,
+                   const FirstSeen::TimestampMap& timestamps)
+{
+	std::error_code error;
+	std::filesystem::create_directories(
+	    std::filesystem::path(path).parent_path(), error);
+	if (error) return false;
+
+	YAML::Emitter output;
+	output << YAML::BeginMap
+	       << YAML::Key << "schema_version" << YAML::Value << 1
+	       << YAML::Key << "apps" << YAML::Value << YAML::BeginMap;
+	for (const auto& [appId, timestamp] : timestamps)
+		output << YAML::Key << appId << YAML::Value << timestamp;
+	output << YAML::EndMap << YAML::EndMap;
+	if (!output.good()) return false;
+	return writeFileTextAtomic(path, std::string(output.c_str()) + "\n");
 }
 }
 
@@ -246,7 +302,10 @@ bool CConfig::loadSettings(bool firstLoad)
 	    getSetting<bool>(node, "DisableParentalRestrictions", false);
 	useWhiteList = getSetting<bool>(node, "UseWhitelist", false);
 	maxSchemaTries = getSetting<uint32_t>(node, "MaxSchemaTries", 10);
-	safeMode = getSetting<bool>(node, "SafeMode", false);
+	// Deprecated compatibility key. Ronin's wrapper crash-loop protection owns
+	// this failure mode; an old SafeMode value must not disable the module after
+	// a routine Steam update, and it is not part of the settings transaction.
+	safeMode = false;
 	notifications = getSetting<bool>(node, "Notifications", true);
 	warnHashMissmatch = getSetting<bool>(node, "WarnHashMissmatch", false);
 	notifyInit = getSetting<bool>(node, "NotifyInit", true);
@@ -337,7 +396,24 @@ bool CConfig::loadSettings(bool firstLoad)
 	appTokens = getMap<AppId_t, uint64_t>(node, "AppTokens");
 	achievementOwners = getMap<AppId_t, uint64_t>(node, "AchievementOwners");
 	gameTitles = getMap<AppId_t, std::string>(node, "GameTitles");
-	subscriptionTimestamps = getMap<AppId_t, uint32_t>(node, "SubscriptionTimestamps");
+	const auto explicitTimestamps =
+	    getMap<AppId_t, uint32_t>(node, "SubscriptionTimestamps");
+	const std::string dateAddedPath = firstSeenPath(getDir());
+	bool firstSeenValid = false;
+	auto rememberedTimestamps = loadFirstSeen(dateAddedPath, firstSeenValid);
+	const bool isPrelaunch = std::getenv("SLSSTEAM_PRELAUNCH") != nullptr;
+	if (firstSeenValid && (isPrelaunch || !firstLoad)
+	    && FirstSeen::reconcile(
+	        rememberedTimestamps, _addedAppIds,
+	        static_cast<uint32_t>(std::time(nullptr))))
+	{
+		if (saveFirstSeen(dateAddedPath, rememberedTimestamps))
+			g_pLog->info("DateAdded: recorded first discovery for managed apps\n");
+		else
+			g_pLog->warn("DateAdded: failed to persist %s\n", dateAddedPath.c_str());
+	}
+	subscriptionTimestamps = FirstSeen::effective(
+	    rememberedTimestamps, explicitTimestamps, _addedAppIds);
 
 	//Do not warn for these (yet?)
 	const auto idleStatusNode = node["IdleStatus"];
@@ -402,8 +478,8 @@ bool CConfig::loadSettings(bool firstLoad)
 	}
 	else
 	{
-		//g_pLog->notify("Missing DlcData entry in config!");
-		setError(ELoadError::MissingKey);
+		// Optional and empty in the shipped configuration.
+		dlcData = dlcData.empty();
 	}
 
 	const auto denuvoGamesNode = node["DenuvoGames"];
@@ -438,8 +514,8 @@ bool CConfig::loadSettings(bool firstLoad)
 	}
 	else
 	{
-		//g_pLog->notify("Missing DenuvoGames entry in config!");
-		setError(ELoadError::MissingKey);
+		// Optional and empty in the shipped configuration.
+		denuvoGames.set(denuvoGames.empty());
 	}
 
 	// Structured manifest pins:
