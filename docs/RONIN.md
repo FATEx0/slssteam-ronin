@@ -145,6 +145,37 @@ source.
   interface.
 - Every ported subsystem must bring its isolated regression tests.
 
+## Package-owned control backend
+
+The executable currently packaged as `payload/ronin-control` is not a generic
+Ronin host service. It is the SLSsteam-specific backend for the Manifest Pins
+view: it discovers managed games, reads and atomically updates SLSsteam's
+manifest-pin configuration, imports and validates observed SteamDB history,
+resolves builds to depot manifests, and implements the package exports
+`pins.*`.
+
+Ronin supplies only the generic machinery around it: managed subprocess
+lifecycle, the common JSON envelope over a Tsuki-owned Unix socket, import and
+export routing, health observation, and package-owned view hosting. Reusable
+envelope/framing client code may eventually belong in the Ronin SDK, but the
+running backend and its SLSsteam domain logic remain owned by this package.
+
+The intended name is `slssteam-control`; `ronin-control` is retained only until
+the package entry, tests and provenance are renamed together.
+
+The backend must remain available for settings, diagnostics and the
+package-owned view even when the restart-applied Steam hooks are disabled.
+Ronin 2.0 can describe the subprocess, control carrier, exports and launch
+extension, but it cannot yet declare that residency policy explicitly.
+Component IDs such as `control` have no lifecycle semantics. Tsuki currently
+keeps the backend resident by implementation policy.
+
+This is a beta release gate. The Ronin specification and Tsuki must gain an
+explicit, validated management-plane lifecycle declaration and honest state
+aggregation. A connected `slssteam-control` must not make disabled Steam-hook
+functionality appear enabled or running. The unresolved contract is recorded
+in the Ronin SDK's `SPEC.md` under “Resident management-plane semantic gap.”
+
 ## SteamStub handling
 
 Ronin handles SteamStub through Steam's existing ownership-ticket IPC. It does
