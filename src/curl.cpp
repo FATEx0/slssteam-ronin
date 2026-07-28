@@ -4,16 +4,18 @@
 
 #include <cstdlib>
 #include <sstream>
+#include <cerrno>
+#include <cstring>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-//Spawn an external instance of curl, read it's stdout into out and return it's exit code
-//It's necessary because SteamOS seems broken. Curling certain URLs
-//will crash inside libssl.3.so (might have to do with broken certs, idk for sure).
+// Spawn an external curl, read stdout into out and return its exit code.
+// Keeping TLS outside Steam avoids loading another SSL stack into its process.
 int Curl::getString(const char* url, std::string& out)
 {
 	g_pLog->debug("Curl::getString(%s)\n", url);
+	out.clear();
 
 	int pipefd[2];
 
@@ -25,16 +27,15 @@ int Curl::getString(const char* url, std::string& out)
 
 	g_pLog->debug("Created pipe %i : %i\n", pipefd[0], pipefd[1]);
 
-	constexpr static const char* env[] =
-	{
-		"PATH='/usr/bin:/bin'",
-		nullptr
-	};
-
 	const char* args[] =
 	{
+		"curl",
 		"--silent",
+		"--show-error",
+		"--fail",
+		"--location",
 		"--connect-timeout", "15",
+		"--max-time", "30",
 		url,
 		nullptr
 	};
@@ -42,6 +43,8 @@ int Curl::getString(const char* url, std::string& out)
 	const pid_t pid = fork();
 	if (pid == -1)
 	{
+		close(pipefd[0]);
+		close(pipefd[1]);
 		g_pLog->debug("Failed to fork!\n");
 		return 1;
 	}
@@ -58,11 +61,25 @@ int Curl::getString(const char* url, std::string& out)
 		close(pipefd[0]);
 		close(pipefd[1]);
 
-		execve("/bin/curl", const_cast<char**>(args), const_cast<char**>(env));
-		execve("/usr/bin/curl", const_cast<char**>(args), const_cast<char**>(env));
+		// Keep HOME, proxy, DNS and certificate settings from the user's
+		// session, but never propagate Steam's injection environment into an
+		// unrelated helper process.
+		unsetenv("LD_AUDIT");
+		unsetenv("LD_PRELOAD");
+		unsetenv("LD_LIBRARY_PATH");
 
-		g_pLog->debug("Failed to execv curl!\n");
-		exit(1);
+		constexpr static const char* candidates[] =
+		{
+			"/run/current-system/sw/bin/curl",
+			"/usr/bin/curl",
+			"/bin/curl"
+		};
+		for (const char* candidate : candidates)
+			execv(candidate, const_cast<char**>(args));
+
+		dprintf(STDERR_FILENO, "SLSsteam: failed to execute curl: %s\n",
+		        std::strerror(errno));
+		_exit(127);
 	}
 
 	//No need for writing

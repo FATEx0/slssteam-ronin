@@ -31,14 +31,27 @@ bool Updater::init()
 
 	for(const auto url : urls)
 	{
+		data.clear();
 		res = Curl::getString(url, data);
-		g_pLog->info("Curl Res: %u for %s with len %i\n", res, url, data.size());
 
-		if (res == 0 && data.size() > 0) //User reported empty responses
+		if (res == 0 && !data.empty())
 		{
+			g_pLog->info(
+			    "Steam compatibility hash list downloaded from %s (%zu bytes)\n",
+			    url, data.size());
 			downloadSuccess = true;
 			break;
 		}
+
+		if (res == 0)
+			g_pLog->info(
+			    "Steam compatibility hash list source %s returned an empty response\n",
+			    url);
+		else
+			g_pLog->info(
+			    "Steam compatibility hash list download from %s failed "
+			    "(curl exit code %d)\n",
+			    url, res);
 	}
 
 	if(!downloadSuccess)
@@ -46,10 +59,16 @@ bool Updater::init()
 		data = loadFromCache();
 		if(data.size() < 1)
 		{
+			g_pLog->warn(
+			    "Steam compatibility hash list is unavailable and no cached "
+			    "copy exists\n");
 			return false;
 		}
 
-		g_pLog->info("Using cached updates.yaml\n");
+		g_pLog->info(
+		    "Steam compatibility hash list downloads unavailable; using cached "
+		    "copy (%zu bytes)\n",
+		    data.size());
 	}
 
 	g_pLog->debug("updates.yaml:\n%s\n", data.c_str());
@@ -75,7 +94,7 @@ bool Updater::init()
 	}
 	catch(...)
 	{
-		g_pLog->info("Failed to parse updates!\n");
+		g_pLog->warn("Steam compatibility hash list could not be parsed\n");
 		return false;
 	}
 
