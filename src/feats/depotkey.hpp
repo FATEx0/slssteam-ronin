@@ -36,6 +36,7 @@
 #include <vector>
 
 class CProtoBufMsgBase;
+class CNetPacket;
 
 namespace DepotKey
 {
@@ -87,6 +88,11 @@ namespace DepotKey
 	// CProtoBufMsgBase_Send / _InitFromPacket detours.
 	void recvMsg(CProtoBufMsgBase* msg);
 	void sendMsg(CProtoBufMsgBase* msg);
+	// AceSLS currently transports these messages through CNetPacket hooks.
+	// Retaining explicit adapters prevents a transport migration from silently
+	// disconnecting the cached-key substitution path.
+	void recvMsg(CNetPacket* packet);
+	void sendMsg(CNetPacket* packet);
 
 	// Specific protobuf-typed handlers.
 	void recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp);

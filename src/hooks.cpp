@@ -24,6 +24,7 @@
 
 #include "feats/achievements.hpp"
 #include "feats/apps.hpp"
+#include "feats/depotkey.hpp"
 #include "feats/depotquarantine.hpp"
 #include "feats/dlc.hpp"
 #include "feats/misc.hpp"
@@ -292,6 +293,7 @@ static void hkCMInterface_RecvPkt(void* pCMInterface, CNetPacket* pNetPacket)
 
 		Misc::recvMsg(pNetPacket);
 		Ticket::recvMsg(pNetPacket);
+		DepotKey::recvMsg(pNetPacket);
 		ManifestCode::processRecv(pNetPacket);
 	}
 
@@ -377,6 +379,7 @@ static bool hkWebSocketConnection_BBuildAndAsyncSendFrame(void* pWebSocketConnec
 		{
 			Apps::sendMsg(&packet);
 			FakeAppIds::sendMsg(&packet);
+			DepotKey::sendMsg(&packet);
 
 			//Do not free ourself since Steam does so. We reuse our CNetPacket buffer
 			pData = packet.body;

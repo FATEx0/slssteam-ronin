@@ -32,3 +32,13 @@ void CSteamEngine::setAppIdForCurrentPipe(const AppId_t appId)
 }
 
 CSteamEngine* g_pSteamEngine = nullptr;
+
+CUser* getLocalUser()
+{
+	if (g_pSteamEngine == nullptr)
+	{
+		return nullptr;
+	}
+
+	return g_pSteamEngine->getUser(0);
+}

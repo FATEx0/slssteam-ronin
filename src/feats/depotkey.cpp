@@ -6,6 +6,7 @@
 #include "../config.hpp"
 #include "../globals.hpp"
 
+#include "../sdk/CNetPacket.hpp"
 #include "../sdk/CProtoBufMsgBase.hpp"
 #include "../sdk/steam.hpp"
 
@@ -514,6 +515,32 @@ void sendMsg(CProtoBufMsgBase* msg)
 		default:
 			break;
 	}
+}
+
+void recvMsg(CNetPacket* packet)
+{
+	if (!packet || !packet->isValid() || !packet->isProtoBuf()) return;
+	if (packet->getProtoBufType() != k_EMsgClientGetDepotDecryptionKeyResponse)
+		return;
+
+	auto response =
+	    packet->deserializeBody<CMsgClientGetDepotDecryptionKeyResponse>();
+	const auto originalResult = response.eresult();
+	recvDepotKey(&response);
+	if (originalResult != k_EResultOK && response.eresult() == k_EResultOK)
+	{
+		packet->serialize(response);
+	}
+}
+
+void sendMsg(CNetPacket* packet)
+{
+	if (!packet || !packet->isValid() || !packet->isProtoBuf()) return;
+	if (packet->getProtoBufType() != k_EMsgClientGetDepotDecryptionKey)
+		return;
+
+	auto request = packet->deserializeBody<CMsgClientGetDepotDecryptionKey>();
+	sendDepotKey(&request);
 }
 
 } // namespace DepotKey

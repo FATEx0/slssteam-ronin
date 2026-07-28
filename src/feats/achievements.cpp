@@ -101,8 +101,11 @@ uint32_t Achievements::sendAndRecvGetPlayerStats
 		return k_EResultNoResult;
 	}
 
-	//Don't do anything for legit apps
-	if (g_pSteamEngine->getUser(0)->isSubscribed(send->appid()))
+	//Don't do anything for legit apps. An unresolved user (null) can't
+	//confirm ownership either way -- fall through to the reviewer path
+	//rather than crash, same default used elsewhere in this codebase.
+	CUser* user = getLocalUser();
+	if (user != nullptr && user->isSubscribed(send->appid()))
 	{
 		return k_EResultNoResult;
 	}
@@ -150,7 +153,8 @@ uint32_t Achievements::sendAndRecvGetUserStats(CAPIJob* job, CProtoBufMsgBase* s
 
 	const auto sendBdy = send->getBody<CMsgClientGetUserStats>();
 
-	if (g_pSteamEngine->getUser(0)->isSubscribed(sendBdy->game_id()))
+	CUser* user = getLocalUser();
+	if (user != nullptr && user->isSubscribed(sendBdy->game_id()))
 	{
 		return 0;
 	}

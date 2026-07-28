@@ -271,12 +271,32 @@ bool Apps::shouldDisableCloud(const AppId_t appId)
 		return false;
 	}
 
-	return !g_pSteamEngine->getUser(0)->isSubscribed(appId);
+	// AdditionalApps are unlocked via Apps::unlockApp, which also makes
+	// isSubscribed() report true for them -- so the isSubscribed() check
+	// below can never catch an added app on its own. Cloud still can't
+	// actually sync: Valve's cloud backend validates ownership
+	// server-side and rejects the upload with "Access Denied", surfacing
+	// as a cloud error. Force-disable explicitly for AdditionalApps so
+	// Steam doesn't attempt the doomed sync at all.
+	// getLocalUser() can be null before the engine/user pointer resolves
+	// (early bootstrap). Matching upstream slsteam-moon's own null-safety
+	// default: an unresolved user is treated as "don't disable" here, not
+	// as "unowned" -- isAddedAppId alone still forces disable regardless.
+	CUser* user = getLocalUser();
+	return g_config.isAddedAppId(appId) || (user != nullptr && !user->isSubscribed(appId));
 }
 
 bool Apps::shouldDisableCDKey(const AppId_t appId)
 {
-	return !g_pSteamEngine->getUser(0)->isSubscribed(appId);
+	// Same reasoning as shouldDisableCloud: an added app's isSubscribed()
+	// reports true, so a launch-time legacy-key request still reaches
+	// Valve's backend and gets AccessDenied -- for a game whose appinfo
+	// still carries hadthirdpartycdkey this can fail the launch before
+	// Proton is ever spawned. Note: unlike upstream slsteam-moon, Ronin
+	// has no equivalent DLC-appid registration (isAddedAppDlcId), so this
+	// only covers the base AdditionalApps entry itself, not its DLC.
+	CUser* user = getLocalUser();
+	return g_config.isAddedAppId(appId) || (user != nullptr && !user->isSubscribed(appId));
 }
 
 bool Apps::shouldDisableUpdates(const AppId_t appId)
@@ -287,7 +307,8 @@ bool Apps::shouldDisableUpdates(const AppId_t appId)
 	}
 
 	//Using AdditionalApps here aswell so users can manually block updates
-	return g_config.isAddedAppId(appId) || !g_pSteamEngine->getUser(0)->isSubscribed(appId);
+	CUser* user = getLocalUser();
+	return g_config.isAddedAppId(appId) || (user != nullptr && !user->isSubscribed(appId));
 }
 
 void Apps::sendAndRecvLastPlayedTimes(const char* name, CPlayer_GetLastPlayedTimes_Response* recv)
@@ -336,7 +357,8 @@ void Apps::sendGamesPlayed(CNetPacket* pkt)
 			continue;
 		}
 
-		if(!owned && g_pSteamEngine->getUser(0)->isSubscribed(gameId))
+		CUser* localUser = getLocalUser();
+		if(!owned && localUser != nullptr && localUser->isSubscribed(gameId))
 		{
 			owned = true;
 		}
