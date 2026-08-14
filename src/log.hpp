@@ -14,6 +14,7 @@
 #include <sstream>
 #include <unordered_set>
 
+
 enum class LogLevel : unsigned int
 {
 	//TODO: Add Trace without breaking configs and without using -1 for Once
@@ -71,7 +72,7 @@ class CLog
 		formatted.resize(size);
 		snprintf(formatted.data(), size, msg, args...);
 
-		std::stringstream notifySS;
+		std::ostringstream notifySS;
 
 		switch(lvl)
 		{
@@ -97,7 +98,13 @@ class CLog
 			debug("system(\"%s\")\n", notifySS.str().c_str());
 		}
 
-		const auto lock = std::unique_lock(mutex);
+		const auto lock = std::lock_guard(mutex);
+
+		//Prevent crashes from queued operations
+		if (!ofstream.is_open())
+		{
+			return;
+		}
 
 		if (lvl == LogLevel::Once)
 		{

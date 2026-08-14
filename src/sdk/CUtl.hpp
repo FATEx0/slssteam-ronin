@@ -4,16 +4,20 @@
 
 
 template<typename T>
-struct CUtlMemory
+class CUtlMemory
 {
+public:
+
 	T* base;
 	uint32_t alloc;
 	uint32_t growSize;
 };
 
 template<typename T>
-struct CUtlVector
+class CUtlVector
 {
+public:
+
 	CUtlMemory<T> memory;
 	uint32_t size;
 
@@ -50,7 +54,6 @@ public:
 	int32_t get;				//0xC
 	int32_t put;				//0x10
 	int32_t offset;				//0x14
-	uint8_t __pad0x18[0x2];		//0x18
-	uint8_t flags;				//0x1A
-	uint8_t __pad0x1B[0x9];		//0x1B
+	uint32_t flags;				//0x1A
+	uint8_t __pad0x1B[0x8];		//0x1B
 }; //0x24

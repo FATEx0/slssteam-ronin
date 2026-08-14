@@ -2,4 +2,6 @@
 
 CONFIG="$(cat "./res/config.yaml")"
 
-echo "static const char* defaultConfig = R\"($CONFIG)\";" > src/config_default.hpp
+echo "#pragma once
+
+constexpr static const char* defaultConfig = R\"($CONFIG)\";" > src/config_default.hpp

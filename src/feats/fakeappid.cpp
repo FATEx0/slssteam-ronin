@@ -8,6 +8,7 @@
 #include "../sdk/CUser.hpp"
 #include "../sdk/IClientUtils.hpp"
 
+
 AppId_t FakeAppIds::lastAppLaunched;
 
 std::unordered_map<uint32_t, AppId_t> FakeAppIds::fakeAppIdMap = std::unordered_map<AppId_t, AppId_t>();
@@ -32,78 +33,79 @@ AppId_t FakeAppIds::getFakeAppId(const AppId_t appId)
 
 AppId_t FakeAppIds::getRealAppIdForCurrentPipe(const bool fallback)
 {
-	if (!g_pClientUtils)
+	const auto utils = g_pSteamEngine->getUtils();
+	if (!utils)
 	{
 		return 0;
 	}
 
-	const uint32_t hPipe = *g_pClientUtils->getPipeIndex();
+	const HSteamPipe hPipe = utils->getCurrentSteamPipe();
 	if (fakeAppIdMap.contains(hPipe))
 	{
-		return fakeAppIdMap[hPipe];
+		return fakeAppIdMap.at(hPipe);
 	}
 
 	if (fallback)
 	{
-		return g_pClientUtils->getAppId();
+		return utils->getAppId();
 	}
 
 	return 0;
 }
 
-bool FakeAppIds::shouldUseRealAppIdForInterface(const EInterfaceType type)
+bool FakeAppIds::shouldUseRealAppIdForInterface(const EIPCInterface type)
 {
 	switch(type)
 	{
-		//case k_EInterfaceTypeClientUser:
-		//case k_EInterfaceTypeClientGameServerInternal:
-		//case k_EInterfaceTypeClientFriends:
-		case k_EInterfaceTypeClientUtils:
-		case k_EInterfaceTypeClientBilling:
-		//case k_EInterfaceTypeClientMatchmaking:
-		case k_EInterfaceTypeClientApps:
-		case k_EInterfaceTypeClientUserStats:
-		//case k_EInterfaceTypeClientNetworking:
-		case k_EInterfaceTypeClientRemoteStorage:
-		case k_EInterfaceTypeClientDepotBuilder:
-		case k_EInterfaceTypeClientAppManager:
-		case k_EInterfaceTypeClientConfigStore:
-		//case k_EInterfaceTypeClientGameCoordinator:
-		//case k_EInterfaceTypeClientGameServerStats:
-		case k_EInterfaceTypeClientGameStats:
-		case k_EInterfaceTypeClientHTTP:
-		case k_EInterfaceTypeClientScreenshots:
-		case k_EInterfaceTypeClientAudio:
-		case k_EInterfaceTypeClientUnifiedMessages:
-		case k_EInterfaceTypeClientStreamLauncher:
-		case k_EInterfaceTypeClientParentalSettings:
-		case k_EInterfaceTypeClientNetworkDeviceManager:
-		case k_EInterfaceTypeClientMusic:
-		case k_EInterfaceTypeClientRemoteClientManager:
-		case k_EInterfaceTypeClientUGC:
-		case k_EInterfaceTypeClientStreamClient:
-		case k_EInterfaceTypeClientProductBuilder:
-		case k_EInterfaceTypeClientShortcuts:
-		case k_EInterfaceTypeClientGameNotifications:
-		case k_EInterfaceTypeClientVideo:
-		case k_EInterfaceTypeClientInventory:
-		case k_EInterfaceTypeClientVR:
-		case k_EInterfaceTypeClientControllerSerialized:
-		case k_EInterfaceTypeClientAppDisableUpdate:
-		case k_EInterfaceTypeClientSharedConnection:
-		case k_EInterfaceTypeClientShader:
-		//case k_EInterfaceTypeClientNetworkingSocketsSerialized:
-		case k_EInterfaceTypeClientCompat:
-		case k_EInterfaceTypeClientParties:
-		//case k_EInterfaceTypeClientNetworkingUtilsSerialized:
-		case k_EInterfaceTypeClientRemotePlay:
-		//case k_EInterfaceTypeClientGameServerPacketHandler:
-		case k_EInterfaceTypeClientSystemManager:
-		case k_EInterfaceTypeClientSystemPerfManager:
-		case k_EInterfaceTypeClientSystemDockManager:
-		case k_EInterfaceTypeClientSystemAudioManager:
-		case k_EInterfaceTypeClientSystemDisplayManager:
-		case k_EInterfaceTypeClientTimeline:
+		//case k_EIPCInterfaceClientUser:
+		//case k_EIPCInterfaceClientGameServerInternal:
+		//case k_EIPCInterfaceClientFriends:
+		case k_EIPCInterfaceClientUtils:
+		case k_EIPCInterfaceClientBilling:
+		//case k_EIPCInterfaceClientMatchmaking:
+		case k_EIPCInterfaceClientApps:
+		case k_EIPCInterfaceClientUserStats:
+		//case k_EIPCInterfaceClientNetworking:
+		case k_EIPCInterfaceClientRemoteStorage:
+		case k_EIPCInterfaceClientDepotBuilder:
+		case k_EIPCInterfaceClientAppManager:
+		case k_EIPCInterfaceClientConfigStore:
+		//case k_EIPCInterfaceClientGameCoordinator:
+		//case k_EIPCInterfaceClientGameServerStats:
+		case k_EIPCInterfaceClientGameStats:
+		case k_EIPCInterfaceClientHTTP:
+		case k_EIPCInterfaceClientScreenshots:
+		case k_EIPCInterfaceClientAudio:
+		case k_EIPCInterfaceClientUnifiedMessages:
+		case k_EIPCInterfaceClientStreamLauncher:
+		case k_EIPCInterfaceClientParentalSettings:
+		case k_EIPCInterfaceClientNetworkDeviceManager:
+		case k_EIPCInterfaceClientMusic:
+		case k_EIPCInterfaceClientRemoteClientManager:
+		case k_EIPCInterfaceClientUGC:
+		case k_EIPCInterfaceClientStreamClient:
+		case k_EIPCInterfaceClientProductBuilder:
+		case k_EIPCInterfaceClientShortcuts:
+		case k_EIPCInterfaceClientGameNotifications:
+		case k_EIPCInterfaceClientVideo:
+		case k_EIPCInterfaceClientInventory:
+		case k_EIPCInterfaceClientVR:
+		case k_EIPCInterfaceClientControllerSerialized:
+		case k_EIPCInterfaceClientAppDisableUpdate:
+		case k_EIPCInterfaceClientSharedConnection:
+		case k_EIPCInterfaceClientShader:
+		//case k_EIPCInterfaceClientNetworkingSocketsSerialized:
+		case k_EIPCInterfaceClientCompat:
+		case k_EIPCInterfaceClientParties:
+		//case k_EIPCInterfaceClientNetworkingUtilsSerialized:
+		case k_EIPCInterfaceClientRemotePlay:
+		//case k_EIPCInterfaceClientGameServerPacketHandler:
+		case k_EIPCInterfaceClientSystemManager:
+		case k_EIPCInterfaceClientSystemPerfManager:
+		case k_EIPCInterfaceClientSystemDockManager:
+		case k_EIPCInterfaceClientSystemAudioManager:
+		case k_EIPCInterfaceClientSystemDisplayManager:
+		case k_EIPCInterfaceClientTimeline:
 			return true;
 
 		default:
@@ -118,11 +120,10 @@ void FakeAppIds::launchApp(const AppId_t appId)
 
 void FakeAppIds::setAppIdForCurrentPipe(AppId_t& appId)
 {
-	//Keep track of every AppId, for various reasons
-	//fakeAppIdMap[*g_pClientUtils->getPipeIndex()] = appId;
-	fakeAppIdMap[*g_pClientUtils->getPipeIndex()] = lastAppLaunched;
+	const auto utils = g_pSteamEngine->getUtils();
 
-	g_pLog->debug("fakeAppIdMap[%p] = %u\n", *g_pClientUtils->getPipeIndex(), lastAppLaunched);
+	fakeAppIdMap[utils->getCurrentSteamPipe()] = lastAppLaunched;
+	g_pLog->debug("fakeAppIdMap[%p] = %u\n", utils->getCurrentSteamPipe(), lastAppLaunched);
 
 	//Do not change Steam Client itself (AppId 0)
 	if (!appId)
@@ -155,7 +156,8 @@ void FakeAppIds::runIPCFrame(const bool post)
 
 	if (g_config.extendedLogging.get())
 	{
-		g_pLog->debug("Setting AppId to %u in pipe %p\n", appId, *g_pClientUtils->getPipeIndex());
+		const auto utils = g_pSteamEngine->getUtils();
+		g_pLog->debug("Setting AppId to %u in pipe %p\n", appId, utils ? utils->getCurrentSteamPipe() : 0);
 	}
 	g_pSteamEngine->setAppIdForCurrentPipe(appId);
 }
@@ -211,7 +213,7 @@ void FakeAppIds::sendGamesPlayed(CNetPacket *pkt)
 		const auto game = msg.mutable_games_played(i);
 		const uint64_t gameId = game->game_id();
 
-		if (gameId & 0x2000000ULL)
+		if (gameId & GAME_TYPE_SHORTCUT)
 		{
 			continue;
 		}

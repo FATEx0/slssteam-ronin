@@ -36,7 +36,7 @@ ifeq ($(shell type mold &> /dev/null && echo "found"),found)
 endif
 
 audit-libs:
-	make -j $(JOBS) bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch bin/slssteam-control
+	$(MAKE) -j $(JOBS) bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch bin/slssteam-control
 
 ronin-module: audit-libs
 	cp bin/SLSsteam.so module/payload/SLSsteam.so
@@ -47,67 +47,57 @@ ronin-module: audit-libs
 	cp tools/steamdb-history-extension/* module/assets/steamdb-history-extension/
 
 deploy-tsuki-module: ronin-module
-	@test -n "$(TSUKI_ROOT)" || \
-		{ echo "usage: make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
+	@test -n "$(TSUKI_ROOT)" || { echo "usage: make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
 	sh scripts/deploy-tsuki-module.sh "$(TSUKI_ROOT)"
 
 rollback-tsuki-module:
-	@test -n "$(TSUKI_ROOT)" || \
-		{ echo "usage: make rollback-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
+	@test -n "$(TSUKI_ROOT)" || { echo "usage: make rollback-tsuki-module TSUKI_ROOT=/path/to/tsuki"; exit 2; }
 	sh scripts/deploy-tsuki-module.sh --rollback "$(TSUKI_ROOT)"
 
 test-manifestpin-patterns:
-	g++ -std=c++20 tools/test_manifestpin_patterns.cpp \
-		-o /tmp/test_manifestpin_patterns
+	g++ -std=c++20 tools/test_manifestpin_patterns.cpp -o /tmp/test_manifestpin_patterns
 	/tmp/test_manifestpin_patterns "$(STEAMCLIENT)"
 
 test-depotquarantine-patterns:
-	g++ -std=c++20 tools/test_depotquarantine_patterns.cpp \
-		-o /tmp/test_depotquarantine_patterns
+	g++ -std=c++20 tools/test_depotquarantine_patterns.cpp -o /tmp/test_depotquarantine_patterns
 	/tmp/test_depotquarantine_patterns "$(STEAMCLIENT)"
 
 test-steamstub:
-	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic \
-		tools/test_steamstub_ticket.cpp -o /tmp/test_steamstub_ticket
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic tools/test_steamstub_ticket.cpp -o /tmp/test_steamstub_ticket
 	/tmp/test_steamstub_ticket
 
 test-firstseen:
-	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic \
-		tools/test_firstseen.cpp -o /tmp/test_firstseen
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic tools/test_firstseen.cpp -o /tmp/test_firstseen
 	/tmp/test_firstseen
 
 test-slssteam-control: bin/slssteam-control
-	UV_CACHE_DIR=$${UV_CACHE_DIR:-/tmp/codex-uv-cache} \
-		SLSSTEAM_CONTROL_BIN=bin/slssteam-control \
-		uv run python tools/test_slssteam_control.py
+	UV_CACHE_DIR=$${UV_CACHE_DIR:-/tmp/codex-uv-cache} SLSSTEAM_CONTROL_BIN=bin/slssteam-control uv run python tools/test_slssteam_control.py
 
 tools:
-	make -j 2 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber
+	$(MAKE) -j 2 schema-grabber ticket-grabber
 
 bin/SLSsteam.so: $(objs) $(libs)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) $^ -o bin/SLSsteam.so $(LDFLAGS)
 
-bin/library-inject.so: tools/library-inject/main.cpp tools/library-inject/build.sh
-	sh tools/library-inject/build.sh
+bin/library-inject.so:
 	@mkdir -p bin
-	cp tools/library-inject/library-inject.so bin/library-inject.so
+	$(MAKE) -C tools/library-inject
+	ln tools/library-inject/library-inject.so bin/library-inject.so
 
 bin/sls-prelaunch: tools/sls-prelaunch.cpp $(filter-out obj/main.o,$(objs)) $(libs)
 	@mkdir -p bin
-	$(CXX) $(CXXFLAGS) -Iinclude $^ -o $@ \
-		$(filter-out -shared,$(LDFLAGS))
+	$(CXX) $(CXXFLAGS) -Iinclude $^ -o $@ $(filter-out -shared,$(LDFLAGS))
 
 bin/slssteam-control: tools/slssteam-control.cpp
 	@mkdir -p bin
-	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic $< -o $@ \
-		$(shell pkg-config --libs "openssl")
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic $< -o $@ $(shell pkg-config --libs "openssl")
 
-tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber:
-	sh tools/ticket-grabber/build.sh
+schema-grabber:
+	$(MAKE) -C tools/schema-grabber
 
-tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber:
-	sh tools/schema-grabber/build.sh
+ticket-grabber:
+	$(MAKE) -C tools/ticket-grabber
 
 -include $(deps)
 obj/update.o: src/update.cpp res/version.txt
@@ -134,7 +124,7 @@ obj/%.o : src/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -isysteminclude -MMD -MP -c $< -o $@
 
-clean:
+clean-libs:
 	rm -rvf \
 		"obj/" \
 		"bin/" \
@@ -144,8 +134,15 @@ clean:
 		"tools/schema-grabber/bin" \
 		"tools/schema-grabber/obj"
 
+clean-tools:
+	$(MAKE) -C tools/schema-grabber clean
+	$(MAKE) -C tools/ticket-grabber clean
+
 install:
-	sh setup.sh
+	sh setup.sh install
+
+uninstall:
+	sh setup.sh uninstall
 
 zips: build
 	@mkdir -p zips
@@ -176,12 +173,12 @@ zips-config:
 	7z a -mx9 -m9=lzma2 "zips/SLSsteam - SLSConfig $(DATE).7z" "$(HOME)/.config/SLSsteam/config.yaml"
 
 
+clean: clean-libs clean-tools
 build: audit-libs tools
 rebuild: clean build
 release: rebuild zips
 
 .PHONY: audit-libs ronin-module deploy-tsuki-module rollback-tsuki-module \
 	test-manifestpin-patterns test-depotquarantine-patterns test-steamstub \
-	test-firstseen test-slssteam-control \
-	tools build clean \
-	rebuild zips
+	test-firstseen test-slssteam-control build clean clean-libs clean-tools \
+	tools rebuild zips

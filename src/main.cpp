@@ -241,15 +241,8 @@ static void load()
 	if (loadDone)
 		return;
 
-	//This should never happen, but better be safe than sorry in case I refactor someday
-	if (!LM_FindModule("steamclient.so", &g_modSteamClient))
+	if (!g_modSteamClient.base || !g_modSteamUI.base)
 	{
-		unload();
-		return;
-	}
-	if (!LM_FindModule("steamui.so", &g_modSteamUI))
-	{
-		unload();
 		return;
 	}
 
@@ -310,8 +303,6 @@ static void load()
 		}
 	}
 
-	Decompiler::parseModule(g_modSteamClient);
-	
 	if(!VFTIndexes::init())
 	{
 		g_pLog->warn("Failed to parse VFTables! Aborting...");
@@ -355,8 +346,8 @@ static void load()
 
 	if (g_config.notifyInit.get())
 	{
-		const auto now = std::chrono::time_point{std::chrono::system_clock::now()};
-		const auto ymd = std::chrono::year_month_day{std::chrono::floor<std::chrono::days>(now)};
+		const auto now = std::chrono::time_point { std::chrono::system_clock::now() };
+		const auto ymd = std::chrono::year_month_day { std::chrono::floor<std::chrono::days>(now) };
 
 		//Funsy easter egg :)
 		if (static_cast<unsigned int>(ymd.month()) == 2 && static_cast<unsigned int>(ymd.day()) == 22)
@@ -590,15 +581,39 @@ extern "C" unsigned int la_version(unsigned int)
 
 extern "C" unsigned int la_objopen(struct link_map *map, __attribute__((unused)) Lmid_t lmid, __attribute__((unused)) uintptr_t *cookie)
 {
-	if (map && map->l_name
-	    && (std::string(map->l_name).ends_with("/steamclient.so")
-	        || std::string(map->l_name).ends_with("/steamui.so")))
+	if (!map || !map->l_name)
+		return LA_FLG_BINDFROM | LA_FLG_BINDTO;
+	if (!setupSuccess)
+		setup();
+	if (std::string(map->l_name).ends_with("/steamclient.so"))
 	{
-		if (!setupSuccess)
-			setup();
+		//Analyse modules before any relocations get applied
+		LM_FindModule("steamclient.so", &g_modSteamClient);
+		Decompiler::parseModule(g_modSteamClient);
+		//This is wasteful, but we have to analyse right away otherwise the offset get turned into
+		//addresses messing up the analysis.
+		//We could workaround it by only loading after a late module has been loaded
+		for(auto& vft : Decompiler::vftables)
+		{
+			vft.second.analyze();
+		}
+
 		load();
 	}
-
+	if (std::string(map->l_name).ends_with("/steamui.so"))
+	{
+		//Analyse modules before any relocations get applied
+		LM_FindModule("steamui.so", &g_modSteamUI);
+		Decompiler::parseModule(g_modSteamUI);
+		//This is wasteful, but we have to analyse right away otherwise the offset get turned into
+		//addresses messing up the analysis.
+		//We could workaround it by only loading after a late module has been loaded
+		for(auto& vft : Decompiler::vftables)
+		{
+			vft.second.analyze();
+		}
+		load();
+	}
 	return LA_FLG_BINDFROM | LA_FLG_BINDTO;
 }
 

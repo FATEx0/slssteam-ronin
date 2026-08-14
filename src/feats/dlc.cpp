@@ -12,13 +12,13 @@
 bool DLC::shouldUnlockDlc(const AppId_t appId)
 {
 	//Don't unlock inside the SteamClient (AppId 0)
-	if (!g_pClientUtils || !g_pClientUtils->getAppId())
+	const auto utils = g_pSteamEngine ? g_pSteamEngine->getUtils() : nullptr;
+	if (!utils || !utils->getAppId())
 	{
 		return false;
 	}
 
-	CUser* user = getLocalUser();
-	if (user != nullptr && user->isSubscribed(appId))
+	if (g_pSteamEngine->getUser(0)->isSubscribed(appId))
 	{
 		return false;
 	}

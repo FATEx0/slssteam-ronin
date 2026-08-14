@@ -7,9 +7,10 @@
 #include <memory>
 #include <string>
 
+
 CLog::CLog(const char* path) : path(path)
 {
-	ofstream = std::ofstream(path, std::ios::out);
+	ofstream = std::ofstream(path);
 	if (!ofstream.is_open())
 	{
 		throw std::runtime_error("Unable to open logfile!");
@@ -53,7 +54,7 @@ CLog* CLog::createDefaultLog()
 	const char* home = getenv("HOME");
 	if (home)
 	{
-		std::stringstream ss;
+		std::ostringstream ss;
 		ss << home << "/.SLSsteam.log";
 
 		return new CLog(ss.str().c_str());

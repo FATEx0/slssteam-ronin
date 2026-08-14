@@ -6,11 +6,13 @@
 
 
 class CUser;
+class IClientUtils;
 
 class CSteamEngine
 {
 public:
-	CUser* getUser(const uint32_t index);
+	CUser* getUser(const uint32_t index = 0);
+	IClientUtils* getUtils();
 	void setAppIdForCurrentPipe(const AppId_t appId);
 };
 

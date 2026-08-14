@@ -5,6 +5,10 @@
 #include <cstdint>
 
 
+class IClientAppManager;
+class IClientApps;
+class IClientUser;
+
 enum class ECallbackType : uint32_t
 {
 	LicensesUpdate_t = 0x7d,
@@ -48,8 +52,7 @@ struct AppOwnershipInfo_t {
     int32_t masterSubscriptionAppId;
     uint32_t trialTime;
     uint32_t numLicenses;
-    char region[2];
-    char field7_0x1A[2];
+    char region[4]; //Client copies this like a DWORD, so even though CountryCodes are only 2 bytes 4 seems to be correct
     uint32_t purchaseTime;
     uint32_t realOwner;
     bool ownsLicense;
@@ -77,6 +80,10 @@ struct AppOwnershipInfo_t {
 class CUser
 {
 public:
+	IClientAppManager* getAppManager();
+	IClientApps* getClientApps();
+	IClientUser* getClientUser();
+
 	bool checkAppOwnership(const AppId_t appId, AppOwnershipInfo_t* pInfo);
 	bool isSubscribed(const AppId_t appId);
 

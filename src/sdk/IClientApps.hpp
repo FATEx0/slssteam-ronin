@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+
 using EAppType = EProtoAppType;
 
 enum EAppInfoSection
@@ -40,5 +41,3 @@ public:
 	bool requestAppInfoUpdate(const AppId_t* appIds, const uint32_t numAppIds);
 	EAppType getAppType(const AppId_t appId);
 };
-
-extern IClientApps* g_pClientApps;

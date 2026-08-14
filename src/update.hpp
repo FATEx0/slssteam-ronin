@@ -18,4 +18,5 @@ namespace Updater
 
 	bool init();
 	bool verifySafeModeHash();
+	bool isEnabled();
 }

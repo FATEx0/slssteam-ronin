@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+
 int32_t IClientApps::getAppData(const AppId_t appId, const char* name, const char* pChOut, uint32_t outSize)
 {
 	return MemHlp::callVFunc<uint32_t(*)(void*, AppId_t, const char*, const char*, uint32_t)>
@@ -47,5 +48,3 @@ EAppType IClientApps::getAppType(const AppId_t appId)
 {
 	return MemHlp::callVFunc<EAppType(*)(void*, AppId_t)>(VFTIndexes::IClientApps::GetAppType.index, this, appId);
 }
-
-IClientApps* g_pClientApps;

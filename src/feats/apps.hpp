@@ -3,6 +3,7 @@
 #include "../sdk/steam.hpp"
 
 #include <cstdint>
+#include <mutex>
 #include <unordered_set>
 
 
@@ -20,8 +21,12 @@ struct DepotInfo_t;
 namespace Apps
 {
 	extern bool applistRequested;
+	extern std::unordered_set<AppId_t> privateApps;
 
-	bool unlockApp(const AppId_t appId, AppOwnershipInfo_t* info, const uint32_t ownerId);
+	extern std::mutex pendingLicenseChangesMutex;
+	extern std::unordered_set<AppId_t> pendingLicenseChanges;
+
+	bool unlockApp(const AppId_t appId, AppOwnershipInfo_t* info, const CSteamId& ownerId);
 	bool unlockApp(const AppId_t appId, AppOwnershipInfo_t* info);
 
 	void buildDepotDependency(const AppId_t appId, CUtlVector<DepotInfo_t>* depots, CUtlVector<DepotInfo_t>* sharedDepots);
@@ -40,4 +45,6 @@ namespace Apps
 	void sendGamesPlayed(CNetPacket* pkt);
 	void sendPICSInfoRequest(CNetPacket* pkt);
 	void sendMsg(CNetPacket* pkt);
+
+	void setConfigStoreString(const char* key, const char* value);
 };

@@ -1,5 +1,7 @@
 #include "api.hpp"
 
+#include "sdk/CSteamEngine.hpp"
+#include "sdk/CUser.hpp"
 #include "sdk/IClientAppManager.hpp"
 
 #include "config.hpp"
@@ -105,12 +107,20 @@ void SLSAPI::runIPCFrame()
 		return;
 	}
 
+	const auto usr = g_pSteamEngine->getUser();
+	if (!usr)
+	{
+		return;
+	}
+
+	const auto appManager = usr->getAppManager();
+
 	const std::lock_guard guard(executionMutex);
 
 	while(installs.size())
 	{
 		const auto app = installs.begin();
-		g_pClientAppManager->installApp(app->appId, app->libraryIndex);
+		appManager->installApp(app->appId, app->libraryIndex);
 		installs.erase(app);
 
 		g_pLog->debug("Installed %u to %u\n", app->appId, app->libraryIndex);
@@ -119,7 +129,7 @@ void SLSAPI::runIPCFrame()
 	while(uninstalls.size())
 	{
 		const auto app = uninstalls.begin();
-		g_pClientAppManager->uninstallApp(*app);
+		appManager->uninstallApp(*app);
 		uninstalls.erase(app);
 
 		g_pLog->debug("Uninstalled %u\n", *app);

@@ -7,12 +7,12 @@
 #include "utils.hpp"
 #include "version.hpp"
 
-
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <map>
 #include <string>
+
 
 std::map<uint64_t, std::unordered_set<std::string>> Updater::clientHashMap = std::map<uint64_t, std::unordered_set<std::string>>();
 
@@ -24,6 +24,11 @@ constexpr static const char* urls[] =
 
 bool Updater::init()
 {
+	if (!isEnabled())
+	{
+		return false;
+	}
+
 	std::string data;
 	int res;
 
@@ -130,7 +135,7 @@ std::string Updater::loadFromCache()
 	g_pLog->debug("Loading updates.ymal from disk!\n");
 
 	std::ifstream fstream = std::ifstream(path.c_str());
-	std::stringstream buf;
+	std::ostringstream buf;
 	buf << fstream.rdbuf();
 
 	fstream.close();
@@ -139,6 +144,12 @@ std::string Updater::loadFromCache()
 
 bool Updater::verifySafeModeHash()
 {
+	//Don't waste time calculating SHA
+	if (!isEnabled())
+	{
+		return false;
+	}
+
 	const auto path = std::filesystem::path(g_modSteamClient.path);
 
 	try
@@ -166,4 +177,9 @@ bool Updater::verifySafeModeHash()
 	}
 
 	return true;
+}
+
+bool Updater::isEnabled()
+{
+	return g_config.safeMode.get() || g_config.warnHashMissmatch.get();
 }

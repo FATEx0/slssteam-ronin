@@ -63,6 +63,7 @@ public:
 	virtual void place();
 	virtual void remove();
 
+	bool setup(const char* name, lm_address_t fn, T hookFn);
 	bool setup(const Pattern_t& pattern, T hookFn);
 	bool setup(const VFTableInfo_t& info, T hookFn);
 };
@@ -88,12 +89,6 @@ namespace Hooks
 {
 	typedef void(*TraceIPC_t)(const char*, const char*);
 
-	typedef void(*IClientAppManager_RunIPCFrame_t)(void*, void*, void*, void*);
-	typedef void(*IClientApps_RunIPCFrame_t)(void*, void*, void*, void*);
-	typedef void(*IClientRemoteStorage_RunIPCFrame_t)(void*, void*, void*, void*);
-	typedef void(*IClientUtils_RunIPCFrame_t)(void*, void*, void*, void*);
-	typedef void(*IClientUser_RunIPCFrame_t)(void*, void*, void*, void*);
-
 	typedef uint32_t(*CAPIJob_SendAndRecv_t)(CAPIJob*, CProtoBufMsgBase*, uint32_t, uint32_t, CProtoBufMsgBase*, EMsg);
 
 	typedef uint32_t(*CAppDataCache_BParseResponseFromMessage_t)(void*, CProtoBufMsgBase*);
@@ -115,13 +110,11 @@ namespace Hooks
 
 	typedef bool(*CWebSocketConnection_BBuildAndAsyncSendFrame_t)(void*, uint32_t, void*, uint32_t);
 
-	extern DetourHook<TraceIPC_t> TraceIPC;
+	typedef bool(*IClientConfigStore_SetString_t)(void*, uint32_t, const char*, const char*);
 
-	extern DetourHook<IClientAppManager_RunIPCFrame_t> IClientAppManager_RunIPCFrame;
-	extern DetourHook<IClientApps_RunIPCFrame_t> IClientApps_RunIPCFrame;
-	extern DetourHook<IClientRemoteStorage_RunIPCFrame_t> IClientRemoteStorage_RunIPCFrame;
-	extern DetourHook<IClientUtils_RunIPCFrame_t> IClientUtils_RunIPCFrame;
-	extern DetourHook<IClientUser_RunIPCFrame_t> IClientUser_RunIPCFrame;
+	typedef bool(*IClientRemoteStorage_IsCloudEnabledForApp_t)(void*, AppId_t);
+
+	extern DetourHook<TraceIPC_t> TraceIPC;
 
 	extern DetourHook<CAPIJob_SendAndRecv_t> CAPIJob_SendAndRecv;
 
@@ -144,27 +137,28 @@ namespace Hooks
 
 	extern DetourHook<CWebSocketConnection_BBuildAndAsyncSendFrame_t> CWebSocketConnection_BBuildAndAsyncSendFrame;
 
+	extern DetourHook<IClientConfigStore_SetString_t> IClientConfigStore_SetString;
+
+	extern DetourHook<IClientRemoteStorage_IsCloudEnabledForApp_t> IClientRemoteStorage_IsCloudEnabledForApp;
+
+	typedef unsigned int(*IClientApps_GetDLCCount_t)(void*, AppId_t);
+	typedef bool(*IClientApps_GetDLCDataByIndex_t)(void*, AppId_t, int, AppId_t*, bool*, char*, size_t);
+
 	typedef bool(*IClientAppManager_BCanRemotePlayTogether_t)(void*, AppId_t);
 	typedef bool(*IClientAppManager_BIsDlcEnabled_t)(void*, AppId_t, AppId_t, void*);
 	typedef bool(*IClientAppManager_GetAppUpdateInfo_t)(void*, AppId_t, uint32_t*);
 	typedef void*(*IClientAppManager_LaunchApp_t)(void*, AppId_t*, void*, void*, void*);
 	typedef bool(*IClientAppManager_IsAppDlcInstalled_t)(void*, AppId_t, AppId_t);
 
-	typedef unsigned int(*IClientApps_GetDLCCount_t)(void*, AppId_t);
-
-	typedef bool(*IClientApps_GetDLCDataByIndex_t)(void*, AppId_t, int, AppId_t*, bool*, char*, size_t);
-
-	typedef bool(*IClientRemoteStorage_IsCloudEnabledForApp_t)(void*, AppId_t);
-
-	typedef AppId_t(*IClientUtils_GetAppId_t)(void*);
-	typedef bool(*IClientUtils_GetOfflineMode_t)(void*);
-
 	typedef bool(*IClientUser_BLoggedOn_t)(void*);
 	typedef uint32_t(*IClientUser_BUpdateAppOwnershipTicket_t)(void*, AppId_t, bool);
 	typedef uint32_t(*IClientUser_GetAppOwnershipTicketExtendedData_t)(void*, uint32_t, void*, uint32_t, uint32_t*, uint32_t*, uint32_t*, uint32_t*);
+	typedef bool(*IClientUser_GetEncryptedAppTicket_t)(void*, void*, uint32_t, uint32_t*);
 	typedef uint8_t(*IClientUser_IsUserSubscribedAppInTicket_t)(void*, uint32_t, uint32_t, uint32_t, AppId_t);
 	typedef bool(*IClientUser_RequiresLegacyCDKey_t)(void*, AppId_t, uint32_t*);
 
+	typedef AppId_t(*IClientUtils_GetAppId_t)(void*);
+	typedef bool(*IClientUtils_GetOfflineMode_t)(void*);
 
 	extern VFTHook<IClientAppManager_BCanRemotePlayTogether_t> IClientAppManager_BCanRemotePlayTogether;
 	extern VFTHook<IClientAppManager_BIsDlcEnabled_t> IClientAppManager_BIsDlcEnabled;
@@ -175,31 +169,24 @@ namespace Hooks
 	extern VFTHook<IClientApps_GetDLCDataByIndex_t> IClientApps_GetDLCDataByIndex;
 	extern VFTHook<IClientApps_GetDLCCount_t> IClientApps_GetDLCCount;
 
-	extern VFTHook<IClientRemoteStorage_IsCloudEnabledForApp_t> IClientRemoteStorage_IsCloudEnabledForApp;
+	extern VFTHook<IClientUser_BLoggedOn_t> IClientUser_BLoggedOn;
+	extern VFTHook<IClientUser_BUpdateAppOwnershipTicket_t> IClientUser_BUpdateAppOwnershipTicket;
+	extern VFTHook<IClientUser_GetAppOwnershipTicketExtendedData_t> IClientUser_GetAppOwnershipTicketExtendedData;
+	extern VFTHook<IClientUser_GetEncryptedAppTicket_t> IClientUser_GetEncryptedAppTicket;
+	extern VFTHook<IClientUser_IsUserSubscribedAppInTicket_t> IClientUser_IsUserSubscribedAppInTicket;
+	extern VFTHook<IClientUser_RequiresLegacyCDKey_t> IClientUser_RequiresLegacyCDKey;
 
 	extern VFTHook<IClientUtils_GetAppId_t> IClientUtils_GetAppId;
 	extern VFTHook<IClientUtils_GetOfflineMode_t> IClientUtils_GetOfflineMode;
 
-	extern VFTHook<IClientUser_BLoggedOn_t> IClientUser_BLoggedOn;
-	extern VFTHook<IClientUser_BUpdateAppOwnershipTicket_t> IClientUser_BUpdateAppOwnershipTicket;
-	extern VFTHook<IClientUser_GetAppOwnershipTicketExtendedData_t> IClientUser_GetAppOwnershipTicketExtendedData;
-	extern VFTHook<IClientUser_IsUserSubscribedAppInTicket_t> IClientUser_IsUserSubscribedAppInTicket;
-	extern VFTHook<IClientUser_RequiresLegacyCDKey_t> IClientUser_RequiresLegacyCDKey;
-
-
-	typedef void(*ISteamMatchmakingPingResponse_ServerResponded_t)(void*, gameserverdetails_t*);
-
 
 	//steamui.so
-	extern DetourHook<ISteamMatchmakingPingResponse_ServerResponded_t> ISteamMatchmakingPingResponse_ServerResponded;
+	typedef void(*CGameInfoDialog_ServerResponded_t)(void*, gameserverdetails_t*);
 
+	extern DetourHook<CGameInfoDialog_ServerResponded_t> CGameInfoDialog_ServerResponded;
 
-	//Naked
-	extern lm_address_t IClientUser_GetSteamId;
-	extern lm_address_t hkNakedGetSteamId;
-
-	bool createAndPlaceSteamIdHook();
 	bool setup();
 	void place();
+	void placeVFTHooks();
 	void remove();
 }

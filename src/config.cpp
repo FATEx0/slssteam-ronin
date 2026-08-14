@@ -4,6 +4,8 @@
 #include "config_default.hpp"
 #include "feats/firstseen.hpp"
 
+#include "sdk/CSteamEngine.hpp"
+#include "sdk/CUser.hpp"
 #include "sdk/IClientApps.hpp"
 
 #include "filewatcher.hpp"
@@ -16,8 +18,6 @@
 #include <cstdlib>
 #include <ctime>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -170,24 +170,27 @@ bool saveFirstSeen(const std::string& path,
 
 std::string CConfig::getDir() const
 {
-	char pathBuf[255];
+	std::ostringstream path;
+
 	const char* configDir = getenv("XDG_CONFIG_HOME"); //Most users should have this set iirc
-	if (configDir != NULL)
+	if (configDir)
 	{
-		sprintf(pathBuf, "%s/SLSsteam", configDir);
+		path << configDir;
 	}
 	else
 	{
 		const char* home = getenv("HOME");
-		sprintf(pathBuf, "%s/.config/SLSsteam", home);
+		path << home << "/.config";
 	}
 
-	return std::string(pathBuf);
+	path << "/SLSsteam";
+
+	return path.str();
 }
 
 std::string CConfig::getPath() const
 {
-	return getDir().append("/config.yaml");
+	return getDir() + "/config.yaml";
 }
 
 bool CConfig::createFile() const
@@ -207,16 +210,15 @@ bool CConfig::createFile() const
 			g_pLog->debug("Created config directory at %s\n", dir.c_str());
 		}
 
-		FILE* file = fopen(path.c_str(), "w");
-		if (!file)
+		auto config = std::ofstream(path);
+		if (!config.is_open())
 		{
-			g_pLog->notify("Unable to create config at %s!\n", path.c_str());
+			g_pLog->notify("Unable to create %s!", path.c_str());
 			return false;
 		}
 
-		fputs(defaultConfig, file);
-		fflush(file);
-		fclose(file);
+		config << defaultConfig;
+		config.close();
 	}
 
 	return true;
@@ -230,20 +232,22 @@ static void onFileChange()
 
 bool CConfig::init()
 {
-	if(createFile())
+	if(!createFile())
 	{
-		watcher = new CFileWatcher(onFileChange);
-		watcher->addFile(getPath().c_str());
-		// Watching the config directory also catches creation and atomic
-		// replacement of luaappids.yaml.
-		watcher->addFile(getDir().c_str());
-		const auto steamRoot = findSteamRoot();
-		const auto stplug = steamRoot / "config/stplug-in";
-		std::error_code error;
-		if (!steamRoot.empty() && std::filesystem::is_directory(stplug, error))
-			watcher->addFile(stplug.c_str());
-		watcher->start();
+		g_pLog->debug("Config creation failed!\n");
+		return false;
 	}
+
+	watcher = new CFileWatcher(onFileChange);
+	watcher->addFile(getPath().c_str());
+	// Watching the directory catches luaappids.yaml creation/replacement.
+	watcher->addFile(getDir().c_str());
+	const auto steamRoot = findSteamRoot();
+	const auto stplug = steamRoot / "config/stplug-in";
+	std::error_code error;
+	if (!steamRoot.empty() && std::filesystem::is_directory(stplug, error))
+		watcher->addFile(stplug.c_str());
+	watcher->start();
 
 	loadSettings(true);
 	return true;
@@ -257,15 +261,35 @@ CConfig::~CConfig()
 	}
 }
 
-
-void CConfig::setError(ELoadError err)
+void CConfig::setError(const ELoadError err, const char* keyName)
 {
-	if (__loadErrors.get() > err)
+	const auto prev = __loadErrors.get();
+	std::ostringstream msg;
+
+	if (!prev.size())
 	{
-		return;
+		msg << "Config loading errors:\n";
+	}
+	else
+	{
+		msg << prev << "\n";
 	}
 
-	__loadErrors = err;
+	switch(err)
+	{
+		case ELoadError::MissingKey:
+			msg << "Missing " << keyName;
+			break;
+
+		case ELoadError::ParsingException:
+			msg << "Failed to parse " << keyName;
+			break;
+
+		default:
+			break;
+	}
+
+	__loadErrors = msg.str();
 }
 
 bool CConfig::loadSettings(bool firstLoad)
@@ -295,7 +319,7 @@ bool CConfig::loadSettings(bool firstLoad)
 		}
 	}
 
-	__loadErrors = ELoadError::None;
+	__loadErrors = std::string("");
 	
 	disableFamilyLock = getSetting<bool>(node, "DisableFamilyShareLock", true);
 	disableParentalRestrictions =
@@ -310,6 +334,7 @@ bool CConfig::loadSettings(bool firstLoad)
 	warnHashMissmatch = getSetting<bool>(node, "WarnHashMissmatch", false);
 	notifyInit = getSetting<bool>(node, "NotifyInit", true);
 	api = getSetting<bool>(node, "API", true);
+	fakeName = getSetting<std::string>(node, "FakeName", "");
 	fakeEmail = getSetting<std::string>(node, "FakeEmail", "");
 	fakeWalletBalance = getSetting<int32_t>(node, "FakeWalletBalance", 0);
 	disableCloud = getSetting<bool>(node, "DisableCloud", true);
@@ -332,6 +357,7 @@ bool CConfig::loadSettings(bool firstLoad)
 	g_pLog->info("WarnHashMissmatch: %i\n", warnHashMissmatch.get());
 	g_pLog->info("NotifyInit: %i\n", notifyInit.get());
 	g_pLog->info("API: %i\n", api.get());
+	g_pLog->info("FakeName: %s\n", fakeName.get().c_str());
 	g_pLog->info("FakeEmail: %s\n", fakeEmail.get().c_str());
 	g_pLog->info("FakeWalletBalance: %i\n", fakeWalletBalance.get());
 	g_pLog->info("DisableCloud: %i\n", disableCloud.get());
@@ -414,6 +440,7 @@ bool CConfig::loadSettings(bool firstLoad)
 	}
 	subscriptionTimestamps = FirstSeen::effective(
 	    rememberedTimestamps, explicitTimestamps, _addedAppIds);
+	steamIdOverride = getMap<AppId_t, uint64_t>(node, "SteamIdOverride");
 
 	//Do not warn for these (yet?)
 	const auto idleStatusNode = node["IdleStatus"];
@@ -435,7 +462,7 @@ bool CConfig::loadSettings(bool firstLoad)
 		catch(...)
 		{
 			//g_pLog->warn("Failed to parse IdleStatus!");A
-			setError(ELoadError::ParsingException);
+			setError(ELoadError::ParsingException, "IdleStatus");
 		}
 	}
 
@@ -469,7 +496,7 @@ bool CConfig::loadSettings(bool firstLoad)
 			catch(...)
 			{
 				//g_pLog->notify("Failed to parse DlcData!");
-				setError(ELoadError::ParsingException);
+				setError(ELoadError::ParsingException, "DlcData");
 				break;
 			}
 		}
@@ -491,7 +518,7 @@ bool CConfig::loadSettings(bool firstLoad)
 		{
 			try
 			{
-				const uint32_t steamId = steamIdNode.first.as<uint32_t>();
+				const uint64_t steamId = steamIdNode.first.as<uint64_t>();
 				_denuvoGames[steamId] = std::unordered_set<AppId_t>();
 
 				for (auto& appIdNode : steamIdNode.second)
@@ -506,7 +533,7 @@ bool CConfig::loadSettings(bool firstLoad)
 			catch (...)
 			{
 				//g_pLog->notify("Failed to parse DenuvoGames!");
-				setError(ELoadError::ParsingException);
+				setError(ELoadError::ParsingException, "DenuvoGames");
 			}
 		}
 
@@ -581,17 +608,10 @@ bool CConfig::loadSettings(bool firstLoad)
 		lockedApps = ManifestPins::lockedAppSet(pins);
 	}
 
-	switch(__loadErrors.get())
+	const auto errors = __loadErrors.get();
+	if (errors.size())
 	{
-		case ELoadError::MissingKey:
-			g_pLog->notify("Issues during config loading encountered! Missing key(s)");
-			break;
-		case ELoadError::ParsingException:
-			g_pLog->notify("Issues during config loading encountered! Parsing error(s)");
-			break;
-
-		default:
-			break;
+		g_pLog->notify(errors.c_str());
 	}
 
 	return true;
@@ -629,10 +649,13 @@ bool CConfig::shouldExcludeAppId(const AppId_t appId, const bool ignoreAdditiona
 
 		if (!ignoreAdditionalApps)
 		{
+			const auto usr = g_pSteamEngine->getUser();
+			const auto appInfo = usr->getClientApps();
+
 			//Might be worth to check for APPTYPE_DLC, but knowing Valve & individual gamedevs
 			//surely not every DLC will be tagged as such
 			char chParent[16] { };
-			const int len = g_pClientApps ? g_pClientApps->getAppData(appId, "parent", chParent, sizeof(chParent)) : 0;
+			const int len = usr ? appInfo->getAppData(appId, "parent", chParent, sizeof(chParent)) : 0;
 			//Do not blindly trust len, nor the str included. Some devs just like to mess with Valve or something (for example appId 221300)
 			if (len > 0 && Utils::isNumber(chParent))
 			{
@@ -657,18 +680,18 @@ bool CConfig::shouldExcludeAppId(const AppId_t appId, const bool ignoreAdditiona
 	return exclude;
 }
 
-uint32_t CConfig::getDenuvoGameOwner(const AppId_t appId)
+CSteamId CConfig::getDenuvoGameOwner(const AppId_t appId)
 {
 	for(const auto& tpl : denuvoGames.get())
 	{
 		if (tpl.second.contains(appId))
 		{
 			//g_pLog->once("%u is DenuvoGame\n", appId);
-			return tpl.first;
+			return CSteamId(tpl.first);
 		}
 	}
 
-	return 0;
+	return CSteamId();
 }
 
 CConfig g_config = CConfig();

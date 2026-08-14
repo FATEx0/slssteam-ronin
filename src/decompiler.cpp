@@ -22,9 +22,10 @@ void VFTable::init(const lm_address_t addr, const lm_module_t& mod)
 	this->address = addr;
 	this->typeInfo = reinterpret_cast<TypeInfo*>(addr + sizeof(this->address));
 	this->functions = std::vector<lm_address_t>();
+	this->subclasses = std::map<unsigned int, VFTable>();
 }
 
-unsigned int VFTable::analzye()
+unsigned int VFTable::analyze()
 {
 	//*(address + 0) = 0
 	//*(address + sizeof(lm_address_t)) = TypeInfo*
@@ -33,7 +34,7 @@ unsigned int VFTable::analzye()
 	//Already analysed
 	if (functions.size())
 	{
-		return 0;
+		return functions.size();
 	}
 
 	const lm_address_t start = address + sizeof(lm_address_t) * 2;
@@ -43,13 +44,27 @@ unsigned int VFTable::analzye()
 		const lm_address_t offset = *(reinterpret_cast<lm_address_t*>(start) + i);
 		if (!offset)
 		{
-			return i;
+			break;
+		}
+
+		//TODO:
+		//Proper way would be to cross reference the typeInfos, but I couldn't get the calculations for that
+		//right. It worked on the first 4 vftables on CUser but then started failing
+		constexpr lm_address_t NEGATIVE_OFFSET = 0xFFFF0000;
+		if ((offset & NEGATIVE_OFFSET) == NEGATIVE_OFFSET)
+		{
+			break;
 		}
 
 		this->functions.emplace_back(offset + moduleBase);
 	}
 
-	return 0;
+	for(auto& sub : subclasses)
+	{
+		sub.second.analyze();
+	}
+
+	return functions.size();
 }
 
 
@@ -384,6 +399,14 @@ bool Decompiler::collectVFTables(const lm_module_t& mod, const Elf_Shdr& section
 
 			auto vft = VFTable();
 			vft.init(vftAddr, mod);
+
+			if (vftables.contains(name))
+			{
+				auto& parent = vftables[name];
+				parent.subclasses[parent.subclasses.size()] = vft;
+				continue;
+			}
+
 			vftables[name] = vft;
 			//g_pLog->debug("VFTable %s at %p\n", name.c_str(), vft.address);
 		}
@@ -481,18 +504,21 @@ void Decompiler::parseModule(const lm_module_t &mod)
 	if (shROData)
 	{
 		//Collect strings to cross-reference
+		g_pLog->debug("Scanning .rodata for strings in %s\n", mod.name);
 		collectStrings(mod, *shROData);
 	}
 
 	const Elf_Shdr* shRODataStr = getSection(mod, ".rodata.str");
 	if (shRODataStr)
 	{
+		g_pLog->debug("Scanning .rodata.str for strings in %s\n", mod.name);
 		collectStrings(mod, *shRODataStr);
 	}
 
 	const Elf_Shdr* shDataRelRO = getSection(mod, ".data.rel.ro");
 	if (shDataRelRO)
 	{
+		g_pLog->debug("Scanning .data.rel.ro for VFTables in %s\n", mod.name);
 		//Use collected strings to identify typeInfos, then cross reference those to find VFTables
 		collectVFTables(mod, *shDataRelRO);
 	}
@@ -565,9 +591,11 @@ void Decompiler::__parseFunction
 
 			continue;
 		}
-		else if(strcmp(instr.mnemonic, "ret") == 0 || strcmp(instr.mnemonic, "retn") == 0)
+		//Checking the log it seems like capstone is turning all ret instructions into just ret.
+		//But just in case we check for all of them
+		else if(strcmp(instr.mnemonic, "ret") == 0 || strcmp(instr.mnemonic, "retn") == 0 || strcmp(instr.mnemonic, "retf") == 0)
 		{
-			//g_pLog->debug("Hit ret instruction at %p, stopping\n", instr.address);
+			//g_pLog->debug("Hit %s instruction at %p, stopping\n", instr.mnemonic, instr.address);
 			return;
 		}
 
@@ -577,7 +605,7 @@ void Decompiler::__parseFunction
 			continue;
 		}
 
-		if (!leaOffset)
+		if (leaOffset == LM_ADDRESS_BAD)
 		{
 			continue;
 		}
@@ -630,7 +658,6 @@ std::map<std::string, unsigned int> Decompiler::parseInterfaceMapBase(const char
 	}
 
 	auto& vft = vftables[interface];
-	vft.analzye();
 
 	g_pLog->debug("Disassembling %s's functions\n", interface);
 
@@ -644,10 +671,27 @@ std::map<std::string, unsigned int> Decompiler::parseInterfaceMapBase(const char
 
 		for(const auto& ref : refs)
 		{
-			const auto& str = strings[ref.first];
+			auto str = strings[ref.first];
 			if (strstr(interface, str.c_str()))
 			{
 				continue;
+			}
+
+			if (functionMap.contains(str))
+			{
+				//Some functions are overloaded, so we append a 2, 3, etc
+				unsigned int idx = 2;
+				for(;;)
+				{
+					auto indexedStr = str + std::to_string(idx);
+					if (!functionMap.contains(indexedStr))
+					{
+						str = indexedStr;
+						break;
+					}
+
+					idx++;
+				}
 			}
 
 			//I would love to add a break statement after this.

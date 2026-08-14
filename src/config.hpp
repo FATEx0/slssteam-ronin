@@ -44,7 +44,7 @@ public:
 		MissingKey,
 		ParsingException
 	};
-	MTVariable<ELoadError> __loadErrors;
+	MTVariable<std::string> __loadErrors;
 
 	MTVariable<std::unordered_set<AppId_t>> appIds;
 	// App ids explicitly managed by stplug-in or luaappids.yaml. Installed
@@ -64,7 +64,8 @@ public:
 	MTVariable<std::unordered_map<AppId_t, std::string>> gameTitles;
 	MTVariable<std::unordered_map<AppId_t, uint32_t>> subscriptionTimestamps;
 
-	MTVariable<std::unordered_map<uint32_t, std::unordered_set<AppId_t>>> denuvoGames;
+	MTVariable<std::unordered_map<uint64_t, std::unordered_set<AppId_t>>> denuvoGames;
+	MTVariable<std::unordered_map<AppId_t, uint64_t>> steamIdOverride;
 
 	MTVariable<bool> disableFamilyLock;
 	MTVariable<bool> disableParentalRestrictions;
@@ -80,6 +81,7 @@ public:
 	MTVariable<bool> achievements;
 	MTVariable<uint64_t> achievementOwnerId;
 	MTVariable<std::unordered_map<AppId_t, uint64_t>> achievementOwners;
+	MTVariable<std::string> fakeName;
 	MTVariable<std::string> fakeEmail;
 	MTVariable<int32_t> fakeWalletBalance;
 	MTVariable<unsigned int> logLevel;
@@ -100,7 +102,7 @@ public:
 	bool createFile() const;
 	bool init();
 
-	void setError(const ELoadError err);
+	void setError(const ELoadError err, const char* keyName);
 	bool loadSettings(const bool firstLoad = false);
 
 	template<typename T>
@@ -111,7 +113,7 @@ public:
 			// Scalar settings are part of the Tsuki <-> SLSsteam transaction
 			// contract. A missing one uses its safe default, but remains visible
 			// as schema drift until Ronin writes the complete declared set.
-			setError(ELoadError::MissingKey);
+			setError(ELoadError::MissingKey, name);
 			return defVal;
 		}
 
@@ -155,7 +157,7 @@ public:
 			catch(...)
 			{
 				//g_pLog->notify("Failed to parse %s!", name);
-				setError(ELoadError::ParsingException);
+				setError(ELoadError::ParsingException, name);
 			}
 		}
 
@@ -196,7 +198,7 @@ public:
 			catch(...)
 			{
 				//g_pLog->notify("Failed to parse %s!", name);
-				setError(ELoadError::ParsingException);
+				setError(ELoadError::ParsingException, name);
 			}
 		}
 
@@ -209,7 +211,7 @@ public:
 	bool isAppLocked(AppId_t appId);
 
 	bool shouldExcludeAppId(const AppId_t appId, const bool ignoreAdditionalApps = false);
-	uint32_t getDenuvoGameOwner(const AppId_t appId);
+	CSteamId getDenuvoGameOwner(const AppId_t appId);
 };
 
 extern CConfig g_config;

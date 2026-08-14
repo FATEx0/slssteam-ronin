@@ -19,14 +19,15 @@
 #include <ios>
 #include <sstream>
 
-uint32_t Ticket::oneTimeSteamIdSpoof = 0;
-std::map<AppId_t, Ticket::SavedTicket> Ticket::ticketMap = std::map<AppId_t, SavedTicket>();
-std::map<AppId_t, Ticket::SavedTicket> Ticket::encryptedTicketMap = std::map<AppId_t, SavedTicket>();
+
+std::unordered_map<AppId_t, CSteamId> Ticket::oneTimeSteamIdSpoof = std::unordered_map<AppId_t, CSteamId>();
+std::unordered_map<AppId_t, Ticket::SavedTicket> Ticket::ticketMap = std::unordered_map<AppId_t, SavedTicket>();
+std::unordered_map<AppId_t, Ticket::SavedTicket> Ticket::encryptedTicketMap = std::unordered_map<AppId_t, SavedTicket>();
 
 std::string Ticket::getTicketDir()
 {
-	std::stringstream ss;
-	ss << g_config.getDir().c_str() << "/cache";
+	std::ostringstream ss;
+	ss << g_config.getDir() << "/cache";
 
 	const auto dir = ss.str();
 	if (!std::filesystem::exists(dir.c_str()))
@@ -39,42 +40,39 @@ std::string Ticket::getTicketDir()
 
 std::string Ticket::getTicketPath(const AppId_t appId)
 {
-	std::stringstream ss;
+	std::ostringstream ss;
 	ss << getTicketDir().c_str() << "/ticket_" << appId << ".yaml";
 
 	return ss.str();
 }
 
-Ticket::SavedTicket Ticket::getCachedTicket(const AppId_t appId)
+Ticket::SavedTicket* Ticket::getCachedTicket(const AppId_t appId)
 {
 	if (ticketMap.contains(appId))
 	{
-		return ticketMap[appId];
+		return &ticketMap.at(appId);
 	}
-
-	SavedTicket ticket {};
 
 	const auto path = getTicketPath(appId);
 	if (!std::filesystem::exists(path.c_str()))
 	{
-		return ticket;
+		return nullptr;
 	}
 
 	std::ifstream ifs(path, std::ios::in);
 
 	g_pLog->debug("Reading ticket for %u\n", appId);
 
+	SavedTicket& ticket = ticketMap[appId];
+
 	auto node = YAML::LoadFile(path);
-	ticket.steamId = node["steamId"].as<uint32_t>();
+	ticket.steamId = CSteamId(node["steamId"].as<uint64_t>());
 	ticket.ticket = std::string
 	(
 		base64::from_base64(node["ticket"].as<std::string>())
 	);
-	//g_pLog->debug("Ticket: %u, %s\n", ticket.steamId, ticket.ticket.c_str());
 
-	ticketMap[appId] = ticket;
-
-	return ticket;
+	return &ticket;
 }
 
 bool Ticket::saveTicketToCache(const CMsgClientGetAppOwnershipTicketResponse& resp)
@@ -88,7 +86,7 @@ bool Ticket::saveTicketToCache(const CMsgClientGetAppOwnershipTicketResponse& re
 	YAML::Emitter node;
 	node << YAML::BeginMap;
 	node << YAML::Key << "steamId";
-	node << YAML::Value << g_currentSteamId;
+	node << YAML::Value << g_currentSteamId.steamId64;
 	node << YAML::Key << "ticket";
 	node << YAML::Value << base64::to_base64(bytes);
 	node << YAML::EndMap;
@@ -100,10 +98,9 @@ bool Ticket::saveTicketToCache(const CMsgClientGetAppOwnershipTicketResponse& re
 
 	g_pLog->once("Saved ticket for %u\n", appId);
 
-	//TODO: Skip copy
-	SavedTicket ticket {};
+	SavedTicket& ticket = ticketMap[appId];
+	ticket.steamId = g_currentSteamId;
 	ticket.ticket = bytes;
-	ticketMap[appId] = ticket;
 	
 	return true;
 }
@@ -111,25 +108,35 @@ bool Ticket::saveTicketToCache(const CMsgClientGetAppOwnershipTicketResponse& re
 void Ticket::launchApp(const AppId_t appId)
 {
 	auto ticket = getCachedTicket(appId);
-	if (!ticket.ticket.size())
+	if (!ticket)
 	{
 		return;
 	}
 
-	g_pSteamEngine->getUser(0)->updateAppOwnershipTicket(appId, reinterpret_cast<void*>(ticket.ticket.data()), ticket.ticket.size());
+	g_pSteamEngine->getUser(0)->updateAppOwnershipTicket(appId, reinterpret_cast<void*>(ticket->ticket.data()), ticket->ticket.size());
 	g_pLog->once("Force loaded AppOwnershipTicket for %i\n", appId);
+}
+
+void Ticket::getEncryptedAppTicket(const AppId_t appId)
+{
+	const SavedTicket* cached = Ticket::getCachedEncryptedTicket(appId);
+	if (!cached)
+	{
+		return;
+	}
+
+	oneTimeSteamIdSpoof[appId] = cached->steamId;
 }
 
 void Ticket::getTicketOwnershipExtendedData(const AppId_t appId)
 {
-	const SavedTicket cached = Ticket::getCachedTicket(appId);
-	const uint32_t steamId = cached.steamId;
-	if (!steamId)
+	const SavedTicket* cached = Ticket::getCachedTicket(appId);
+	if (!cached)
 	{
 		return;
 	}
 
-	oneTimeSteamIdSpoof = steamId;
+	oneTimeSteamIdSpoof[appId] = cached->steamId;
 }
 
 bool Ticket::forgeSteamStubTicket(
@@ -144,12 +151,12 @@ bool Ticket::forgeSteamStubTicket(
 	// cached, correctly signed ownership ticket for the current user. The
 	// SteamDRMP parser accepts the requested AppID inserted immediately
 	// before that ticket's signature when the original size is reported.
-	const SavedTicket source = getCachedTicket(7);
-	if (source.ticket.empty())
+	const SavedTicket* source = getCachedTicket(7);
+	if (!source || source->ticket.empty())
 		return false;
 
 	return SteamStubTicket::forge(
-	    source.ticket,
+	    source->ticket,
 	    appId,
 	    outputCapacity,
 	    output);
@@ -157,42 +164,41 @@ bool Ticket::forgeSteamStubTicket(
 
 std::string Ticket::getEncryptedTicketPath(const AppId_t appId)
 {
-	std::stringstream ss;
+	std::ostringstream ss;
 	ss << getTicketDir().c_str() << "/encryptedTicket_" << appId << ".yaml";
 
 	return ss.str();
 }
 
-Ticket::SavedTicket Ticket::getCachedEncryptedTicket(const AppId_t appId)
+Ticket::SavedTicket* Ticket::getCachedEncryptedTicket(const AppId_t appId)
 {
 	const AppId_t realAppId = FakeAppIds::getRealAppIdForCurrentPipe();
-	const AppId_t fakeAppId = FakeAppIds::getFakeAppId(realAppId);
 
-	SavedTicket ticket {};
-
-	if (realAppId && fakeAppId && appId != realAppId)
+	if (realAppId != appId)
 	{
-		g_pLog->once("Returning empty cached encrypted ticket for %u because it's set to %u\n", realAppId, fakeAppId);
-		return ticket;
+		g_pLog->debug("Returning empty cached encrypted Ticket for %u because it's running as %u\n", realAppId, appId);
+		return nullptr;
 	}
 
 	if (encryptedTicketMap.contains(appId))
 	{
-		return encryptedTicketMap[appId];
+		return &encryptedTicketMap.at(appId);
 	}
 
 	const auto path = getEncryptedTicketPath(appId);
 	if (!std::filesystem::exists(path.c_str()))
 	{
-		return ticket;
+		return nullptr;
 	}
 
 	std::ifstream ifs(path, std::ios::in);
 
 	g_pLog->debug("Reading encrypted ticket for %u\n", appId);
 
+	SavedTicket& ticket = encryptedTicketMap[appId];
+
 	auto node = YAML::LoadFile(path);
-	ticket.steamId = node["steamId"].as<uint32_t>();
+	ticket.steamId = CSteamId(node["steamId"].as<uint64_t>());
 	ticket.ticket = std::string
 	(
 		//Can not get yaml-cpp to properly decode
@@ -203,11 +209,8 @@ Ticket::SavedTicket Ticket::getCachedEncryptedTicket(const AppId_t appId)
 		//)
 		base64::from_base64(node["encryptedTicket"].as<std::string>())
 	);
-	//g_pLog->debug("Ticket: %u, %s\n", ticket.steamId, ticket.ticket.c_str());
 
-	encryptedTicketMap[appId] = ticket;
-
-	return ticket;
+	return &ticket;
 }
 
 bool Ticket::saveEncryptedTicketToCache(const CMsgClientRequestEncryptedAppTicketResponse& resp)
@@ -221,7 +224,7 @@ bool Ticket::saveEncryptedTicketToCache(const CMsgClientRequestEncryptedAppTicke
 	YAML::Emitter node;
 	node << YAML::BeginMap;
 	node << YAML::Key << "steamId";
-	node << YAML::Value << g_currentSteamId;
+	node << YAML::Value << g_currentSteamId.steamId64;
 	node << YAML::Key << "encryptedTicket";
 	//node << YAML::Value << YAML::EncodeBase64(reinterpret_cast<const unsigned char*>(bytes.c_str()), bytes.size());
 	node << YAML::Value << base64::to_base64(bytes);
@@ -234,11 +237,9 @@ bool Ticket::saveEncryptedTicketToCache(const CMsgClientRequestEncryptedAppTicke
 
 	g_pLog->once("Saved encrypted ticket for %u\n", appId);
 
-	//TODO: Skip copy
-	SavedTicket ticket {};
+	SavedTicket& ticket = encryptedTicketMap[appId];
 	ticket.steamId = g_currentSteamId;
 	ticket.ticket = bytes;
-	encryptedTicketMap[appId] = ticket;
 	
 	return true;
 }
@@ -253,13 +254,13 @@ void Ticket::recvEncryptedAppTicket(CNetPacket* pkt)
 		return;
 	}
 
-	const SavedTicket ticket = getCachedEncryptedTicket(msg.app_id());
-	if(!ticket.steamId)
+	const SavedTicket* ticket = getCachedEncryptedTicket(msg.app_id());
+	if(!ticket)
 	{
 		return;
 	}
 
-	msg.ParseFromString(ticket.ticket);
+	msg.ParseFromString(ticket->ticket);
 	pkt->serialize(msg);
 
 	g_pLog->debug("Using encryptedTicket_%u from disk\n", msg.app_id());

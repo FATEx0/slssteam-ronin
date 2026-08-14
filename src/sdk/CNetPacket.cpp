@@ -2,7 +2,7 @@
 
 
 uint8_t g_packetsArray[MAX_PACKET_SIZE * MAX_PACKETS] { };
-uint32_t g_packetsArrayIndex = 0;
+uintptr_t g_packetsArrayOffset;
 
 std::mutex g_packetSerializeMutex;
 

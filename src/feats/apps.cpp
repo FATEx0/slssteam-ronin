@@ -10,6 +10,7 @@
 
 #include "../config.hpp"
 #include "../globals.hpp"
+#include "../utils.hpp"
 
 #include "fakeappid.hpp"
 
@@ -17,16 +18,21 @@
 #include <cstdint>
 #include <mutex>
 #include <sstream>
+#include <string>
 
 
 bool Apps::applistRequested;
+std::unordered_set<AppId_t> Apps::privateApps = std::unordered_set<AppId_t>();
 
-bool Apps::unlockApp(const AppId_t appId, AppOwnershipInfo_t* info, const uint32_t ownerId)
+std::mutex Apps::pendingLicenseChangesMutex;
+std::unordered_set<AppId_t> Apps::pendingLicenseChanges = std::unordered_set<AppId_t>();
+
+bool Apps::unlockApp(const AppId_t appId, AppOwnershipInfo_t* info, const CSteamId& ownerId)
 {
 	//Changing the purchased field is enough, but just for nicety in the Steamclient UI we change the owner too
-	info->owner = ownerId;
+	info->owner = ownerId.accountId();
 	info->realOwner = 0;
-	info->familyShared = ownerId != g_currentSteamId;
+	info->familyShared = info->owner != g_currentSteamId.accountId();
 
 	info->licensePermanent = !info->familyShared;
 	info->retailLicense = false;
@@ -54,7 +60,6 @@ bool Apps::unlockApp(const AppId_t appId, AppOwnershipInfo_t* info)
 {
 	return unlockApp(appId, info, g_currentSteamId);
 }
-
 
 void Apps::buildDepotDependency(const AppId_t appId, CUtlVector<DepotInfo_t>* depots, CUtlVector<DepotInfo_t>* sharedDepots)
 {
@@ -89,22 +94,21 @@ void Apps::buildDepotDependency(const AppId_t appId, CUtlVector<DepotInfo_t>* de
 		const auto depot = sharedDepots->at(i);
 		g_pLog->debug("Shared Depot %u for %u -> %llu\n", depot->depotId, depot->appId, depot->manifestId);
 	}
-
 }
 
 bool Apps::checkAppOwnership(AppId_t appId, AppOwnershipInfo_t* pInfo)
 {
 	//Wait Until GetSubscribedApps gets called once to let Steam request and populate legit data first.
 	//Afterwards modifying should hopefully not affect false positives anymore
-	if (!applistRequested || !pInfo || !g_currentSteamId)
+	if (!applistRequested || !pInfo || !g_currentSteamId.isSet())
 	{
 		return false;
 	}
 
-	const uint32_t denuvoOwner = g_config.getDenuvoGameOwner(appId);
+	const CSteamId denuvoOwner = g_config.getDenuvoGameOwner(appId);
 
 	//Do not modify Denuvo enabled Games
-	if (denuvoOwner && denuvoOwner != g_currentSteamId)
+	if (denuvoOwner.isSet() && denuvoOwner.steamId64 != g_currentSteamId.steamId64)
 	{
 		//Would love to log the SteamId, but for users anonymity I won't
 		g_pLog->once("Skipping %u because it's a Denuvo game from someone else\n", appId);
@@ -163,11 +167,20 @@ void Apps::getSubscribedApps(AppId_t* appList, const size_t size, uint32_t& coun
 
 void Apps::parseProductInfoFromResponse(CMsgClientPICSProductInfoResponse* msg)
 {
+	std::lock_guard lock(pendingLicenseChangesMutex);
+
 	auto set = std::unordered_set<AppId_t>();
 	for(const auto& app : msg->apps())
 	{
+		if (!pendingLicenseChanges.contains(app.appid()))
+		{
+			continue;
+		}
+
 		set.emplace(app.appid());
+		pendingLicenseChanges.erase(app.appid());
 	}
+
 	postAppLicensesChanged(set);
 }
 
@@ -190,6 +203,7 @@ void Apps::postAppLicensesChanged(const std::unordered_set<AppId_t>& apps)
 	for(unsigned int i = 0; i < apps.size(); i++)
 	{
 		unsigned int idx = i % AppLicensesChanged_t::MAX_APPS_PER_CALLBACK;
+
 		cb.apps[idx] = *std::next(apps.begin(), i);
 		cb.count = idx + 1;
 		cb.appsAdded |= 1llu << idx;
@@ -221,12 +235,14 @@ void Apps::postAppLicensesChanged(const std::unordered_set<AppId_t>& apps)
 
 void Apps::runIPCFrame()
 {
-	if (!g_pClientApps)
+	const auto usr = g_pSteamEngine->getUser();
+	if (!usr)
 	{
 		return;
 	}
 
 	const std::lock_guard appsChanged(g_config.appsChangedMutex);
+	const auto appInfo = usr->getClientApps();
 
 	if (g_config.removedApps.size())
 	{
@@ -236,6 +252,13 @@ void Apps::runIPCFrame()
 
 	const auto added = g_config.newApps;
 
+	if (!added.size())
+	{
+		return;
+	}
+
+	const std::lock_guard pendingLicensesLock(pendingLicenseChangesMutex);
+
 	//Max batch of 15, otherwise not all apps will get a response which means they won't get added
 	constexpr unsigned int MAX_APPS_PER_REQUEST = 15;
 	AppId_t apps[MAX_APPS_PER_REQUEST] { };
@@ -244,21 +267,25 @@ void Apps::runIPCFrame()
 	for(; i < added.size(); i++)
 	{
 		const unsigned int idx = i % MAX_APPS_PER_REQUEST;
-		apps[idx] = *std::next(added.begin(), i);
+		const AppId_t appId = *std::next(added.begin(), i);
+
+		apps[idx] = appId;
 
 		g_pLog->debug("AppInfoRequest %u -> %u from (%i)\n", idx, apps[idx], i);
 
 		if (idx + 1 >= MAX_APPS_PER_REQUEST)
 		{
-			g_pClientApps->requestAppInfoUpdate(apps, MAX_APPS_PER_REQUEST);
+			appInfo->requestAppInfoUpdate(apps, MAX_APPS_PER_REQUEST);
 			memset(apps, 0, sizeof(apps));
 		}
+
+		pendingLicenseChanges.emplace(appId);
 	}
 
 	const unsigned int idx = i % MAX_APPS_PER_REQUEST;
 	if (apps[0])
 	{
-		g_pClientApps->requestAppInfoUpdate(apps, idx);
+		appInfo->requestAppInfoUpdate(apps, idx);
 	}
 
 	g_config.newApps.clear();
@@ -335,9 +362,10 @@ void Apps::sendAndRecvLastPlayedTimes(const char* name, CPlayer_GetLastPlayedTim
 void Apps::sendGamesPlayed(CNetPacket* pkt)
 {
 	const auto titles = g_config.gameTitles.get();
+	const auto usr = g_pSteamEngine->getUser();
+	const auto appInfo = usr->getClientApps();
 
 	auto msg = pkt->deserializeBody<CMsgClientGamesPlayed>();
-	bool owned = false;
 
 	for(int i = 0; i < msg.games_played_size(); i++)
 	{
@@ -351,16 +379,10 @@ void Apps::sendGamesPlayed(CNetPacket* pkt)
 
 		// Native non-Steam shortcut IDs use 0x2000000 in their low 32 bits.
 		// Leave the original shortcut title and 64-bit ID untouched.
-		if (gameId & 0x2000000ULL)
+		if (gameId & GAME_TYPE_SHORTCUT)
 		{
 			g_pLog->debug("Preserving non-Steam shortcut %llu\n", gameId);
 			continue;
-		}
-
-		CUser* localUser = getLocalUser();
-		if(!owned && localUser != nullptr && localUser->isSubscribed(gameId))
-		{
-			owned = true;
 		}
 
 		if (g_config.disableFamilyLock.get())
@@ -372,10 +394,22 @@ void Apps::sendGamesPlayed(CNetPacket* pkt)
 		{
 			game->set_game_extra_info(titles.at(gameId));
 		}
-		else if (!owned || FakeAppIds::getFakeAppId(gameId))
+		//This probably belongs into FakeAppIds, but the GameTitles does not so it stays here
+		else if (FakeAppIds::getFakeAppId(gameId))
 		{
 			char name[256] {}; //No clue how long titles can get
-			const int len = g_pClientApps->getAppData(gameId, "common/name", name, sizeof(name));
+			int len;
+
+			if (privateApps.contains(gameId))
+			{
+				strcpy(name, "Redacted");
+				len = strlen(name);
+			}
+			else
+			{
+				len = appInfo->getAppData(gameId, "common/name", name, sizeof(name));
+			}
+
 			if (len > 0)
 			{
 				g_pLog->debug("AppName %s (%i)\n", name, len);
@@ -443,5 +477,37 @@ void Apps::sendMsg(CNetPacket *pkt)
 
 		default:
 			break;
+	}
+}
+
+void Apps::setConfigStoreString(const char* key, const char* value)
+{
+	if (!std::string(key).starts_with("WebStorage\\PrivateApps"))
+	{
+		return;
+	}
+
+	g_pLog->debug("%s -> %s\n", key, value);
+
+	auto str = std::string(value);
+	if (str.size() < 3) //List is empty, nope out
+	{
+		return;
+	}
+
+	privateApps.clear();
+	str = str.substr(1, str.size() - 2); //[730,240,440,etc]
+	const auto split = Utils::strsplit(const_cast<char*>(str.c_str()), ",");
+
+	for(const auto& s : split)
+	{
+		if (!Utils::isNumber(s.c_str()))
+		{
+			g_pLog->debug("%s is not a number! Skipping\n", s.c_str());
+		}
+
+		const AppId_t appId = std::stoul(s);
+		privateApps.emplace(appId);
+		g_pLog->debug("Added %u to privateApps\n", appId);
 	}
 }

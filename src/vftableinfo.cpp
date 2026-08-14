@@ -41,7 +41,6 @@ bool VFTableInfo_t::init()
 
 	auto& vft = Decompiler::vftables[typeName];
 	auto& funcs = vft.functions;
-	vft.analzye();
 
 	if (index >= funcs.size())
 	{
@@ -78,6 +77,16 @@ namespace VFTIndexes
 		{
 			"30CClientUnifiedServiceTransport",
 			"SendAndRecv",
+			5
+		};
+	}
+
+	namespace CGameInfoDialog
+	{
+		VFTableInfo_t ServerResponded
+		{
+			"15CGameInfoDialog",
+			"ServerResponded",
 			5
 		};
 	}
@@ -187,6 +196,15 @@ namespace VFTIndexes
 	//	};
 	//}
 
+	namespace IClientConfigStoreMap
+	{
+		VFTableInfo_t SetString
+		{
+			"21IClientConfigStoreMap",
+			"SetString"
+		};
+	}
+
 	namespace IClientRemoteStorage
 	{
 		VFTableInfo_t IsCloudEnabledForApp
@@ -227,6 +245,11 @@ namespace VFTIndexes
 			"14IClientUserMap",
 			"GetAppOwnershipTicketExtendedData"
 		};
+		VFTableInfo_t GetEncryptedAppTicket
+		{
+			"14IClientUserMap",
+			"GetEncryptedAppTicket"
+		};
 		VFTableInfo_t GetSteamID
 		{
 			"14IClientUserMap",
@@ -266,11 +289,13 @@ void VFTIndexes::dump(const std::string& name, const std::map<std::string, unsig
 
 bool VFTIndexes::init()
 {
+	bool success = true;
+
 	for(const auto& fn : functions)
 	{
 		if (!fn->init())
 		{
-			return false;
+			success = false;
 		}
 	}
 
@@ -282,5 +307,5 @@ bool VFTIndexes::init()
 		}
 	}
 
-	return true;
+	return success;
 }

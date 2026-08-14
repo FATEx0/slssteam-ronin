@@ -1,5 +1,5 @@
 Repository: https://github.com/FATEx0/slssteam-ronin
-Base commit: f7bb63f157ace2e80bbc37ab1af8bf9381131a77
+AceSLS mirror base: a1b30e8183651a6d3a016365b18d8893964af7cc
 Working-tree stability delta:
 - App-info provisioning runs in the package-contained `sls-prelaunch`
   executable before Steam starts. Running it from the rtld-audit callback
@@ -18,10 +18,10 @@ Working-tree stability delta:
 
 Packaged artifacts:
 
-12cc8dd75e8b83d321ac8da2c388e52dd23742616b27392f3afa2c041bd29e37  payload/SLSsteam.so
+7a044fb05f55c1aa945eb7729294c81fa04611aef078cf7c6c6c1682e175e752  payload/SLSsteam.so
 f2758562bddf8ff4447afe78988c54cde2791518fecf3d2a7bed290b4442e06b  payload/library-inject.so
-9e4b1bc818a79449c288db2bd108195c08bbe013d23377237372e017dfa8e1d4  payload/sls-prelaunch
-a809a4b111c609713fb6bad3cf8797909cbe7fe452f1318ed73961c37cac8b25  payload/slssteam-control
+8467068578edf734632cdfd5284bbb3633d90c505974bd8fda75b7822e67008c  payload/sls-prelaunch
+92148ef48ea61c93108ecb24b9b21c80ac7c1a59d073788c7435fca3f2748c8a  payload/slssteam-control
 
 SteamStub ownership is handled inside SLSsteam's existing
 GetAppOwnershipTicketExtendedData hook. When Steam has no genuine ticket for a

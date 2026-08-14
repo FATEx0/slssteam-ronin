@@ -35,6 +35,11 @@ namespace VFTIndexes
 		extern VFTableInfo_t SendAndRecvMsg;
 	}
 
+	namespace CGameInfoDialog
+	{
+		extern VFTableInfo_t ServerResponded;
+	}
+
 	namespace CSteamMatchmakingServers
 	{
 		extern VFTableInfo_t GetServerDetails;
@@ -63,6 +68,11 @@ namespace VFTIndexes
 		extern VFTableInfo_t UninstallApp;
 	}
 
+	namespace IClientConfigStoreMap
+	{
+		extern VFTableInfo_t SetString;
+	}
+
 	namespace IClientEngine
 	{
 		extern VFTableInfo_t GetClientUser;
@@ -84,6 +94,7 @@ namespace VFTIndexes
 		extern VFTableInfo_t BLoggedOn;
 		extern VFTableInfo_t BUpdateAppOwnershipTicket;
 		extern VFTableInfo_t GetAppOwnershipTicketExtendedData;
+		extern VFTableInfo_t GetEncryptedAppTicket;
 		extern VFTableInfo_t GetSteamID;
 		extern VFTableInfo_t IsUserSubscribedAppInTicket;
 		extern VFTableInfo_t RequiresLegacyCDKey;

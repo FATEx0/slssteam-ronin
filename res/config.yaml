@@ -86,6 +86,12 @@ SubscriptionTimestamps:
 #Blocks games from unlocking on wrong accounts
 DenuvoGames:
 
+#Overrides your SteamId an app sees. Only needed when the automatic SteamId spoofing
+#fails (some games do call GetSteamId before they request your ticket)
+#Also can be used to workaround locked saves
+#Either set to SteamId or to 0 to use the SteamId in the cached AppOwnershipTicket
+SteamIdOverride:
+
 #Automatically grab Achievement schemas from Steams CDN which makes them always up to date
 #Slows down game's loading page the first time you click them
 #If you don't want this set it to 0 and use tools/schema-grabber instead to grab them outside of steam
@@ -125,6 +131,9 @@ Achievements: yes
 #owned by the current account. Per-app entries below override this value.
 AchievementOwnerId: 76561198028121353
 AchievementOwners:
+
+#Changes your Persona's Name clientsidedly
+FakeName: ""
 
 #Changes your account's E-Mail clientsided. Leave blank to disable
 FakeEmail: ""

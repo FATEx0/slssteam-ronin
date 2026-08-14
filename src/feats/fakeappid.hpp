@@ -21,7 +21,7 @@ namespace FakeAppIds
 
 	AppId_t getFakeAppId(const AppId_t appId);
 	AppId_t getRealAppIdForCurrentPipe(const bool fallback = true);
-	bool shouldUseRealAppIdForInterface(const EInterfaceType type);
+	bool shouldUseRealAppIdForInterface(const EIPCInterface type);
 
 	//General functionality
 	void launchApp(const AppId_t appId);

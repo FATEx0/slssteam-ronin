@@ -14,7 +14,7 @@ public:
 	const std::string name;
 	const std::string pattern;
 	const MemHlp::SigFollowMode followMode;
-	std::vector<uint8_t> prologue;
+	std::vector<int16_t> prologue;
 
 	/*
 	 * Steam-internal signatures are a compatibility boundary, not an ABI.
@@ -41,7 +41,7 @@ public:
 	lm_module_t* module;
 
 	Pattern_t(const char* name, const char* pattern, MemHlp::SigFollowMode followMode, lm_module_t* module = nullptr);
-	Pattern_t(const char* name, const char* pattern, MemHlp::SigFollowMode followMode, std::vector<uint8_t> prologue, lm_module_t* module = nullptr);
+	Pattern_t(const char* name, const char* pattern, MemHlp::SigFollowMode followMode, std::vector<int16_t> prologue, lm_module_t* module = nullptr);
 	//~CPattern();
 
 	bool find();
@@ -67,7 +67,7 @@ namespace Patterns
 	{
 		extern Pattern_t SetAppIdForCurrentPipe;
 		extern Pattern_t RunInterface;
-
+		extern Pattern_t Offset_ClientUtils;
 		extern Pattern_t Offset_User;
 	}
 
@@ -84,6 +84,9 @@ namespace Patterns
 		extern Pattern_t PostCallback;
 		extern Pattern_t UpdateAppOwnershipTicket;
 		extern Pattern_t NotifyLicensesUpdated;
+		extern Pattern_t m_OffsetClientUser;
+		extern Pattern_t m_OffsetUserAppInfo;
+		extern Pattern_t m_OffsetUserAppManager;
 	}
 
 	namespace CPackageInfoCache
@@ -112,39 +115,11 @@ namespace Patterns
 		extern Pattern_t BuildDepotDependency;
 	}
 
-	namespace IClientAppManager
-	{
-		extern Pattern_t RunIPCFrame;
-	}
-
-	namespace IClientApps
-	{
-		extern Pattern_t RunIPCFrame;
-	}
-
-	namespace IClientRemoteStorage
-	{
-		extern Pattern_t RunIPCFrame;
-	}
-
-	namespace IClientUser
-	{
-		extern Pattern_t GetSteamId;
-		extern Pattern_t RunIPCFrame;
-	}
-
 	namespace IClientUtils
 	{
-		extern Pattern_t RunIPCFrame;
 		extern Pattern_t Offset_GetPipeIndex;
 	}
 
-
-	//steamui.so
-	namespace ISteamMatchmakingPingResponse
-	{
-		extern Pattern_t ServerResponded;
-	}
 
 	extern std::vector<Pattern_t*> patterns;
 	bool init();

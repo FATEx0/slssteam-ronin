@@ -1,6 +1,7 @@
 #include "CSteamEngine.hpp"
 
 #include "CUtl.hpp"
+#include "IClientUtils.hpp"
 
 #include "../hooks.hpp"
 #include "../patterns.hpp"
@@ -10,7 +11,7 @@
 
 CUser* CSteamEngine::getUser(const uint32_t index)
 {
-	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 0x2);
+	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 2);
 	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(this + offset);
 	if (index >= vec->size)
 	{
@@ -22,6 +23,18 @@ CUser* CSteamEngine::getUser(const uint32_t index)
 	//const auto ppUserMap = *reinterpret_cast<uint8_t**>(this + offset);
 	//const auto ppUser = ppUserMap + index * 8;
 	//return *reinterpret_cast<CUser**>(ppUser + 4);
+}
+
+
+IClientUtils* CSteamEngine::getUtils()
+{
+	if (!getUser())
+	{
+		return nullptr;
+	}
+
+	const static lm_address_t offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2);
+	return reinterpret_cast<IClientUtils*>(this + offset);
 }
 
 void CSteamEngine::setAppIdForCurrentPipe(const AppId_t appId)

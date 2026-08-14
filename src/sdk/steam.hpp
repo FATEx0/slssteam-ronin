@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+
 typedef uint32_t AppId_t;
 typedef uint64_t GameId_t;
 
@@ -10,63 +11,88 @@ typedef int32_t ENetPacket;
 typedef uint32_t HSteamPipe;
 typedef uint32_t HSteamUser;
 
+
+constexpr uint64_t GAME_TYPE_SHORTCUT = 0x2000000ULL;
+
 constexpr static ENetPacket INVALID_NETPACKET_TYPE = -1;
 constexpr static ENetPacket PROTOBUF_TYPE_MASK = 0x80000000;
 
-constexpr static HSteamPipe g_globalSteamPipe = 2;
-constexpr static HSteamPipe g_globalSteamUser = 1;
-
-enum EInterfaceType : uint32_t
+enum class EIPCCmd : uint8_t
 {
-	k_EInterfaceTypeClientUser = 0x1,
-	k_EInterfaceTypeClientGameServerInternal = 0x2,
-	k_EInterfaceTypeClientFriends = 0x3,
-	k_EInterfaceTypeClientUtils = 0x4,
-	k_EInterfaceTypeClientBilling = 0x5,
-	k_EInterfaceTypeClientMatchmaking = 0x6,
-	k_EInterfaceTypeClientApps = 0x8,
-	k_EInterfaceTypeClientUserStats = 0xb,
-	k_EInterfaceTypeClientNetworking = 0xc,
-	k_EInterfaceTypeClientRemoteStorage = 0xd,
-	k_EInterfaceTypeClientDepotBuilder = 0x10,
-	k_EInterfaceTypeClientAppManager = 0x11,
-	k_EInterfaceTypeClientConfigStore = 0x12,
-	k_EInterfaceTypeClientGameCoordinator = 0x13,
-	k_EInterfaceTypeClientGameServerStats = 0x14,
-	k_EInterfaceTypeClientGameStats = 0x15,
-	k_EInterfaceTypeClientHTTP = 0x16,
-	k_EInterfaceTypeClientScreenshots = 0x17,
-	k_EInterfaceTypeClientAudio = 0x18,
-	k_EInterfaceTypeClientUnifiedMessages = 0x19,
-	k_EInterfaceTypeClientStreamLauncher = 0x1a,
-	k_EInterfaceTypeClientParentalSettings = 0x1b,
-	k_EInterfaceTypeClientNetworkDeviceManager = 0x1d,
-	k_EInterfaceTypeClientMusic = 0x1e,
-	k_EInterfaceTypeClientRemoteClientManager = 0x1f,
-	k_EInterfaceTypeClientUGC = 0x20,
-	k_EInterfaceTypeClientStreamClient = 0x21,
-	k_EInterfaceTypeClientProductBuilder = 0x22,
-	k_EInterfaceTypeClientShortcuts = 0x23,
-	k_EInterfaceTypeClientGameNotifications = 0x25,
-	k_EInterfaceTypeClientVideo = 0x26,
-	k_EInterfaceTypeClientInventory = 0x27,
-	k_EInterfaceTypeClientVR = 0x28,
-	k_EInterfaceTypeClientControllerSerialized = 0x29,
-	k_EInterfaceTypeClientAppDisableUpdate = 0x2a,
-	k_EInterfaceTypeClientSharedConnection = 0x2c,
-	k_EInterfaceTypeClientShader = 0x2d,
-	k_EInterfaceTypeClientNetworkingSocketsSerialized = 0x2e,
-	k_EInterfaceTypeClientCompat = 0x30,
-	k_EInterfaceTypeClientParties = 0x31,
-	k_EInterfaceTypeClientNetworkingUtilsSerialized = 0x32,
-	k_EInterfaceTypeClientRemotePlay = 0x34,
-	k_EInterfaceTypeClientGameServerPacketHandler = 0x35,
-	k_EInterfaceTypeClientSystemManager = 0x36,
-	k_EInterfaceTypeClientSystemPerfManager = 0x39,
-	k_EInterfaceTypeClientSystemDockManager = 0x3a,
-	k_EInterfaceTypeClientSystemAudioManager = 0x3b,
-	k_EInterfaceTypeClientSystemDisplayManager = 0x3c,
-	k_EInterfaceTypeClientTimeline = 0x3d
+	RunInterface = 1,
+	SerializeCallbacks = 2,
+	ConnectPipe = 9
+};
+
+enum class EIPCExitCode : uint8_t
+{
+	Success = 0xb
+};
+
+enum EIPCInterface : uint8_t
+{
+	k_EIPCInterfaceClientUser = 0x1,
+	k_EIPCInterfaceClientGameServerInternal = 0x2,
+	k_EIPCInterfaceClientFriends = 0x3,
+	k_EIPCInterfaceClientUtils = 0x4,
+	k_EIPCInterfaceClientBilling = 0x5,
+	k_EIPCInterfaceClientMatchmaking = 0x6,
+	k_EIPCInterfaceClientApps = 0x8,
+	k_EIPCInterfaceClientUserStats = 0xb,
+	k_EIPCInterfaceClientNetworking = 0xc,
+	k_EIPCInterfaceClientRemoteStorage = 0xd,
+	k_EIPCInterfaceClientDepotBuilder = 0x10,
+	k_EIPCInterfaceClientAppManager = 0x11,
+	k_EIPCInterfaceClientConfigStore = 0x12,
+	k_EIPCInterfaceClientGameCoordinator = 0x13,
+	k_EIPCInterfaceClientGameServerStats = 0x14,
+	k_EIPCInterfaceClientGameStats = 0x15,
+	k_EIPCInterfaceClientHTTP = 0x16,
+	k_EIPCInterfaceClientScreenshots = 0x17,
+	k_EIPCInterfaceClientAudio = 0x18,
+	k_EIPCInterfaceClientUnifiedMessages = 0x19,
+	k_EIPCInterfaceClientStreamLauncher = 0x1a,
+	k_EIPCInterfaceClientParentalSettings = 0x1b,
+	k_EIPCInterfaceClientNetworkDeviceManager = 0x1d,
+	k_EIPCInterfaceClientMusic = 0x1e,
+	k_EIPCInterfaceClientRemoteClientManager = 0x1f,
+	k_EIPCInterfaceClientUGC = 0x20,
+	k_EIPCInterfaceClientStreamClient = 0x21,
+	k_EIPCInterfaceClientProductBuilder = 0x22,
+	k_EIPCInterfaceClientShortcuts = 0x23,
+	k_EIPCInterfaceClientGameNotifications = 0x25,
+	k_EIPCInterfaceClientVideo = 0x26,
+	k_EIPCInterfaceClientInventory = 0x27,
+	k_EIPCInterfaceClientVR = 0x28,
+	k_EIPCInterfaceClientControllerSerialized = 0x29,
+	k_EIPCInterfaceClientAppDisableUpdate = 0x2a,
+	k_EIPCInterfaceClientSharedConnection = 0x2c,
+	k_EIPCInterfaceClientShader = 0x2d,
+	k_EIPCInterfaceClientNetworkingSocketsSerialized = 0x2e,
+	k_EIPCInterfaceClientCompat = 0x30,
+	k_EIPCInterfaceClientParties = 0x31,
+	k_EIPCInterfaceClientNetworkingUtilsSerialized = 0x32,
+	k_EIPCInterfaceClientRemotePlay = 0x34,
+	k_EIPCInterfaceClientGameServerPacketHandler = 0x35,
+	k_EIPCInterfaceClientSystemManager = 0x36,
+	k_EIPCInterfaceClientSystemPerfManager = 0x39,
+	k_EIPCInterfaceClientSystemDockManager = 0x3a,
+	k_EIPCInterfaceClientSystemAudioManager = 0x3b,
+	k_EIPCInterfaceClientSystemDisplayManager = 0x3c,
+	k_EIPCInterfaceClientTimeline = 0x3d
+};
+
+enum class ERemoteStorageSyncState
+{
+	Disabled = 0x0,
+	Unknown = 0x1,
+	Synchronized = 0x2,
+	InProgress = 0x3,
+	ChangesInCloud = 0x4,
+	ChangesLocally = 0x5,
+	ChangesInNloudAndLocally = 0x6,
+	ConflictingChanges = 0x7,
+	NotInitialized = 0x8,
 };
 
 enum EResult
@@ -203,4 +229,52 @@ enum EResult
 	k_EResultMaximumfamilysizeexceeded = 0x81,
 	k_EResultOfflineAppCacheinvalid = 0x82,
 	k_EResultRetrylater = 0x83,
+};
+
+class CSteamId
+{
+public:
+
+	constexpr CSteamId()
+	{
+		steamId64 = 0;
+	}
+
+	constexpr CSteamId(uint64_t id)
+	{
+		steamId64 = id;
+
+		//32 bit accountId passed, fill in rest with defaults
+		if (!steamId.accountType)
+		{
+			steamId.accountType = 1;
+			steamId.universe = 1;
+			steamId.__pad0x5[0] = 0;
+			steamId.__pad0x5[1] = 0x10;
+		}
+	}
+
+	constexpr bool isSet() const
+	{
+		return accountId();
+	}
+
+	constexpr uint32_t accountId() const
+	{
+		return steamId.accountId;
+	}
+
+	struct SteamId_t
+	{
+		uint32_t accountId;		//0x0
+		uint8_t accountType;	//0x4 - Maybe universe?
+		uint8_t __pad0x5[0x2];	//0x5
+		uint8_t universe;		//0x7 - Maybe accountType?
+	}; //0x8
+
+	union
+	{
+		SteamId_t steamId;
+		uint64_t steamId64;
+	};
 };

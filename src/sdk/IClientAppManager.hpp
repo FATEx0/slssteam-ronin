@@ -4,6 +4,7 @@
 
 #include <cstdint>
 
+
 enum EAppState : uint32_t
 {
 	k_EAppStateInvalid = 0x0,
@@ -31,10 +32,10 @@ enum EAppState : uint32_t
 
 struct DepotInfo_t
 {
-	AppId_t depotId;		//0x0
-	AppId_t appId;			//0x4
-	uint64_t manifestId;	//0x8
-	char __pad0x10[0x10];	//0x10
+	AppId_t depotId;			//0x0
+	AppId_t appId;				//0x4
+	uint64_t manifestId;		//0x8
+	uint8_t __pad0x10[0x10];	//0x10
 }; //0x20
 
 class IClientAppManager
@@ -44,5 +45,3 @@ public:
 	uint32_t uninstallApp(const AppId_t appId);
 	EAppState getAppInstallState(const AppId_t appId);
 };
-
-extern IClientAppManager* g_pClientAppManager;

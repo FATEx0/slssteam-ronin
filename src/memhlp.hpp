@@ -1,8 +1,11 @@
 #pragma once
 
-#include "libmem/libmem.h"
 #include "log.hpp"
+
+#include "libmem/libmem.h"
+
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -63,7 +66,7 @@ namespace MemHlp
 	lm_address_t searchSignature(const char* name, const char* signature, const lm_module_t module);
 
 	lm_address_t getJmpTarget(const lm_address_t address);
-	lm_address_t findPrologue(const lm_address_t address, const lm_byte_t* prologueBytes, const lm_size_t prologueSize);
+	lm_address_t findPrologue(const lm_address_t address, const int16_t* prologueBytes, const lm_size_t prologueSize);
 
 	//TODO: Create hooking wrapper that calls this automatically
 	bool fixPICThunkCall(const char* name, const lm_address_t fn, const lm_address_t tramp);

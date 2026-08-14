@@ -65,7 +65,7 @@ std::string Utils::getFileSHA256(const char *filePath)
 	unsigned char sha256Bytes[SHA256_DIGEST_LENGTH];
 	SHA256(bytes.data(), bytes.size(), sha256Bytes);
 
-	std::stringstream sha256;
+	std::ostringstream sha256;
 	for(int i = 0; i < SHA256_DIGEST_LENGTH; i++)
 	{
 		sha256 << std::hex << std::setw(2) << std::setfill('0') << (int)sha256Bytes[i];

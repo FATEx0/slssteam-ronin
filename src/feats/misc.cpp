@@ -1,21 +1,16 @@
 #include "misc.hpp"
 
 #include "../sdk/CNetPacket.hpp"
-#include "../sdk/CProtoBufMsgBase.hpp"
-#include "../sdk/IClientUtils.hpp"
 #include "../sdk/steam.hpp"
 
 #include "../config.hpp"
+#include "../globals.hpp"
 
 #include "fakeappid.hpp"
 
+
 bool Misc::shouldFakeOffline()
 {
-	if (!g_pClientUtils)
-	{
-		return false;
-	}
-	
 	const AppId_t appId = FakeAppIds::getRealAppIdForCurrentPipe();
 	if (!appId || !g_config.fakeOffline.get().contains(appId))
 	{
@@ -31,20 +26,32 @@ void Misc::recvMsg(CNetPacket *pkt)
 {
 	switch(pkt->getProtoBufType())
 	{
-		case k_EMsgClientWalletInfoUpdate:
+		case k_EMsgClientPersonaState:
 		{
-			const int32_t amount = g_config.fakeWalletBalance.get();
-			if (!amount)
+			const auto name = g_config.fakeName.get();
+			if (name.size() < 1)
 			{
 				return;
 			}
 
-			auto msg = pkt->deserializeBody<CMsgClientWalletInfoUpdate>();
-			msg.set_has_wallet(true);
-			msg.set_balance(amount);
-			msg.set_balance64(amount);
+			auto msg = pkt->deserializeBody<CMsgClientPersonaState>();
 
-			pkt->serialize(msg);
+			for(int i = 0; i < msg.friends_size(); i++)
+			{
+				auto frnd = msg.mutable_friends(i);
+
+				if (frnd->friendid() != g_currentSteamId.steamId64)
+				{
+					continue;
+				}
+
+				frnd->set_player_name(name);
+				g_pLog->debug("Faked self persona\n");
+
+				pkt->serialize(msg);
+				break;
+			}
+
 			break;
 		}
 
@@ -59,6 +66,23 @@ void Misc::recvMsg(CNetPacket *pkt)
 			auto msg = pkt->deserializeBody<CMsgClientEmailAddrInfo>();
 			msg.set_email_address(email);
 			msg.set_email_is_validated(true);
+
+			pkt->serialize(msg);
+			break;
+		}
+
+		case k_EMsgClientWalletInfoUpdate:
+		{
+			const int32_t amount = g_config.fakeWalletBalance.get();
+			if (!amount)
+			{
+				return;
+			}
+
+			auto msg = pkt->deserializeBody<CMsgClientWalletInfoUpdate>();
+			msg.set_has_wallet(true);
+			msg.set_balance(amount);
+			msg.set_balance64(amount);
 
 			pkt->serialize(msg);
 			break;

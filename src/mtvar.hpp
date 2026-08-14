@@ -1,3 +1,4 @@
+#pragma once
 #include <mutex>
 #include <shared_mutex>
 
@@ -27,7 +28,7 @@ public:
 
 	void set(T value)
 	{
-		const auto lock = std::unique_lock(mutex);
+		const auto lock = std::lock_guard(mutex);
 		instance = value;
 	}
 
