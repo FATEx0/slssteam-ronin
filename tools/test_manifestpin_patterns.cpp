@@ -51,6 +51,24 @@ static std::vector<size_t> find(
 	return matches;
 }
 
+static size_t callDestination(const std::string& bytes, size_t call)
+{
+	int32_t relative = 0;
+	std::memcpy(&relative, bytes.data() + call + 1, sizeof(relative));
+	return static_cast<size_t>(static_cast<int64_t>(call + 5) + relative);
+}
+
+static bool hasPushLiteralBefore(
+    const std::string& bytes, size_t call, uint8_t literal)
+{
+	const size_t begin = call > 16 ? call - 16 : 0;
+	for (size_t i = begin; i + 1 < call; ++i)
+		if (static_cast<uint8_t>(bytes[i]) == 0x6a
+		    && static_cast<uint8_t>(bytes[i + 1]) == literal)
+			return true;
+	return false;
+}
+
 int main(int argc, char** argv)
 {
 	if (argc != 2) return 2;
@@ -72,14 +90,29 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	int32_t relative = 0;
-	std::memcpy(&relative, bytes.data() + target[0] + 1, sizeof(relative));
-	const size_t destination =
-	    static_cast<size_t>(static_cast<int64_t>(target[0] + 5) + relative);
-	if (destination != builder[0])
+	if (callDestination(bytes, target[0]) != builder[0])
 	{
 		std::cerr << "target call does not resolve to builder\n";
 		return 1;
 	}
-	std::cout << "manifest-pin target call uniquely resolves to builder\n";
+
+	size_t flag0 = 0;
+	size_t flag1 = 0;
+	for (size_t call = 0; call + 5 <= bytes.size(); ++call)
+	{
+		if (static_cast<uint8_t>(bytes[call]) != 0xe8
+		    || callDestination(bytes, call) != builder[0])
+			continue;
+		flag0 += hasPushLiteralBefore(bytes, call, 0);
+		flag1 += hasPushLiteralBefore(bytes, call, 1);
+	}
+	if (flag0 != 4 || flag1 != 4)
+	{
+		std::cerr << "expected four flag=0 and four flag=1 builder calls; found "
+		          << flag0 << " and " << flag1 << '\n';
+		return 1;
+	}
+
+	std::cout << "manifest-pin target and flag-pair assumptions are valid\n";
+	return 0;
 }
