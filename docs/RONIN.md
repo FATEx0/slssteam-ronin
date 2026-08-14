@@ -60,8 +60,8 @@ emitting a partial pin map.
 
 Any mismatch, duplicate build, malformed identifier, missing key-bearing
 anchor depot, incomplete shared interval, or numeric overflow rejects the
-whole import before the previous cache is replaced. The cache is stored as mode `0600` under
-`$HOME/.config/SLSsteam/ronin/manifest-history/`.
+whole import before the previous cache is replaced. The cache is stored as mode
+`0600` under the host-resolved `$MODULE_DATA/manifest-history/` directory.
 
 This is deliberately browser-assisted. Ronin does not bypass SteamDB's access
 controls, copy browser cookies, or pretend SteamDB exposes a supported API.
@@ -101,18 +101,18 @@ slssteam-ronin/
 ├── Makefile
 ├── module/
 │   ├── module.json            # canonical Tsuki module specification
-│   ├── settings.json          # when the split module format is finalized
-│   ├── communication.json     # when the split module format is finalized
+│   ├── settings.json          # component-owned revisioned settings contract
+│   ├── interface.json         # strict exports, imports, logs and evidence
+│   ├── resources.json         # grants, secrets and mutation declarations
+│   ├── content.json           # executable/data/credential classifications
+│   ├── views.json
+│   ├── schemas/
 │   ├── assets/
-│   │   ├── icon.*
-│   │   └── banner.*
-│   ├── config/
-│   │   └── config.yaml
 │   └── payload/               # populated by the module packaging target
 │       ├── SLSsteam.so
 │       ├── library-inject.so
 │       ├── sls-prelaunch
-│       └── ronin-control
+│       └── slssteam-control
 ├── scripts/
 │   └── deploy-tsuki-module.sh
 ├── build/                     # ignored, intermediate compiler output
@@ -122,8 +122,8 @@ slssteam-ronin/
 The native build and module packaging are one pipeline: compile the exact core
 revision and stage its artifacts into `module/payload`. Deployment through
 `make deploy-tsuki-module TSUKI_ROOT=/path/to/tsuki` copies the complete package
-into a temporary directory under Tsuki's module root, validates it with that
-checkout's Ronin SDK, installs the directory, and retains one rollback revision
+into a temporary directory under Tsuki's module root, validates it with the
+separate Ronin SDK checkout, installs the directory, and retains one rollback revision
 outside discovery. A release must never combine a manifest from one revision
 with a binary from another.
 
@@ -147,7 +147,7 @@ source.
 
 ## Package-owned control backend
 
-The executable currently packaged as `payload/ronin-control` is not a generic
+The executable currently packaged as `payload/slssteam-control` is not a generic
 Ronin host service. It is the SLSsteam-specific backend for the Manifest Pins
 view: it discovers managed games, reads and atomically updates SLSsteam's
 manifest-pin configuration, imports and validates observed SteamDB history,
@@ -160,21 +160,29 @@ export routing, health observation, and package-owned view hosting. Reusable
 envelope/framing client code may eventually belong in the Ronin SDK, but the
 running backend and its SLSsteam domain logic remain owned by this package.
 
-The intended name is `slssteam-control`; `ronin-control` is retained only until
-the package entry, tests and provenance are renamed together.
-
 The backend must remain available for settings, diagnostics and the
 package-owned view even when the restart-applied Steam hooks are disabled.
-Ronin 2.0 can describe the subprocess, control carrier, exports and launch
-extension, but it cannot yet declare that residency policy explicitly.
-Component IDs such as `control` have no lifecycle semantics. Tsuki currently
-keeps the backend resident by implementation policy.
+Ronin 3.0 declares it as an `installed` management component independently of
+the `enabled` Steam-hook component. A connected `slssteam-control` therefore
+must not make disabled Steam-hook functionality appear enabled or running.
+Tsuki support for this 3.0 lifecycle and honest state aggregation remains a
+host rollout gate, not an implicit package policy.
 
-This is a beta release gate. The Ronin specification and Tsuki must gain an
-explicit, validated management-plane lifecycle declaration and honest state
-aggregation. A connected `slssteam-control` must not make disabled Steam-hook
-functionality appear enabled or running. The unresolved contract is recorded
-in the Ronin SDK's `SPEC.md` under “Resident management-plane semantic gap.”
+## Deferred Ronin 3 surfaces
+
+The current beta migration does not yet publish the producer-owned
+`manifest-pack.inspect/install/remove/status` exports or
+`manifest-pack.changed` event required for LuaTools integration. LuaTools must
+not write SLSsteam's private pins, configuration, manifest store or
+`stplug-in` files as a substitute. These exports remain gated on the Ronin
+transaction/grant host implementation so install/remove can bind confirmation,
+staging, verification and rollback to a concrete Steam target.
+
+Feature transitions are currently observable through
+`health.evidence.get`. A standardized `feature.status` query and
+`feature.changed` notification remain deferred to Tsuki's Ronin 3 evidence
+aggregation/event implementation; the package must not invent a second,
+conflicting feature-state authority.
 
 ## SteamStub handling
 

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "grant_templates": [
+    {
+      "id": "steam.manifest-target",
+      "resource_class": "steam-app-install",
+      "access": "read-write",
+      "scopes": ["operation"],
+      "reason": "Publish one confirmed app-scoped manifest payload",
+      "constraints": {
+        "app_scoped": true,
+        "max_bytes": 1073741824
+      }
+    }
+  ],
+  "secrets": [
+    {
+      "id": "steam.depot-material",
+      "purpose": "Imported depot keys and ownership-ticket material",
+      "operations": ["status", "use"],
+      "plaintext_delivery": "owner-component",
+      "owner_component": "steam-hooks",
+      "legacy_import": true
+    }
+  ],
+  "mutations": [
+    {
+      "id": "steam.manifest.publish",
+      "resource_class": "steam-app-install",
+      "content_classes": ["target-payload"],
+      "confirmation": "plan-digest",
+      "staging": "required",
+      "verification": "required",
+      "rollback": "best-effort",
+      "audit": "relative-paths-and-hashes"
+    }
+  ]
+}

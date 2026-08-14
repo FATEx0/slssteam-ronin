@@ -5,6 +5,7 @@
 #include "hooks.hpp"
 #include "log.hpp"
 #include "patterns.hpp"
+#include "ronin_env.hpp"
 #include "update.hpp"
 #include "utils.hpp"
 #include "vftableinfo.hpp"
@@ -98,6 +99,47 @@ static void unload()
 static bool setupSuccess = false;
 static uint16_t g_cefSessionPort = 0;
 static bool g_cefKeepDefaultPort = false;
+static int g_readinessFd = -1;
+static std::string g_readinessPath;
+
+static bool publishReadiness()
+{
+	const std::string steamclientHash = Utils::getFileSHA256(g_modSteamClient.path);
+	if (steamclientHash.size() != 64)
+		return false;
+	const char* configured = getenv(("TSUKI_RONIN_RUNTIME_DIR_" + std::string(kRoninEnvId)).c_str());
+	const std::string directory =
+	    configured && *configured ? configured : "/tmp";
+	g_readinessPath = directory + "/.slssteam-ronin.ready." + std::to_string(getpid());
+	g_readinessFd = open(g_readinessPath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0600);
+	if (g_readinessFd < 0 || flock(g_readinessFd, LOCK_EX | LOCK_NB) != 0)
+	{
+		if (g_readinessFd >= 0) close(g_readinessFd);
+		g_readinessFd = -1;
+		return false;
+	}
+	const std::string record =
+	    "{\"schema_version\":\"1\",\"steamclient_sha256\":\""
+	    + steamclientHash + "\"}\n";
+	if (write(g_readinessFd, record.data(), record.size())
+	    != static_cast<ssize_t>(record.size())
+	    || fsync(g_readinessFd) != 0)
+	{
+		close(g_readinessFd);
+		g_readinessFd = -1;
+		unlink(g_readinessPath.c_str());
+		g_readinessPath.clear();
+		return false;
+	}
+	return true;
+}
+
+__attribute__((destructor))
+static void removeReadiness()
+{
+	if (g_readinessFd >= 0) close(g_readinessFd);
+	if (!g_readinessPath.empty()) unlink(g_readinessPath.c_str());
+}
 
 static void setup()
 {
@@ -302,6 +344,13 @@ static void load()
 		ids.insert(ids.end(), dlcIds.begin(), dlcIds.end());
 		if (!ids.empty())
 			PackagePatch::injectIntoPackage0(ids);
+	}
+
+	if (!publishReadiness())
+	{
+		g_pLog->warn("Failed to publish Ronin hook readiness evidence");
+		unload();
+		return;
 	}
 
 	if (g_config.notifyInit.get())

@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "package_artifacts": [
+    {"path": "payload/library-inject.so", "class": "module-executable"},
+    {"path": "payload/SLSsteam.so", "class": "module-executable"},
+    {"path": "payload/sls-prelaunch", "class": "module-executable"},
+    {"path": "payload/slssteam-control", "class": "module-executable"},
+    {"path": "views/manifest-pins/index.js", "class": "module-executable"},
+    {"path": "views/manifest-pins/index.css", "class": "module-executable"},
+    {"path": "assets/steamdb-history-extension/background.js", "class": "module-executable"},
+    {"path": "assets/steamdb-history-extension/content.js", "class": "module-executable"},
+    {"path": "assets/steamdb-history-extension/popup.js", "class": "module-executable"},
+    {"path": "assets/steamdb-history-extension/popup.html", "class": "module-executable"},
+    {"path": "assets/steamdb-history-extension/manifest.json", "class": "declarative-data"},
+    {"path": "assets/steamdb-history-extension/README.md", "class": "declarative-data"}
+  ],
+  "runtime_content": [
+    {
+      "id": "steamdb.history",
+      "class": "declarative-data",
+      "sources": ["user-mediated-import"],
+      "storage": "module-data",
+      "schema": "schemas/history-import-request.json",
+      "max_bytes": 1048576,
+      "executable": false
+    },
+    {
+      "id": "steam.depot-material",
+      "class": "credential",
+      "sources": ["legacy-import"],
+      "storage": "secret-store",
+      "secret": "steam.depot-material",
+      "max_bytes": 16777216,
+      "executable": false
+    },
+    {
+      "id": "steam.manifest-payload",
+      "class": "target-payload",
+      "sources": ["fixed-network-origin", "legacy-import"],
+      "storage": "operation-staging",
+      "mutation": "steam.manifest.publish",
+      "max_bytes": 1073741824,
+      "executable": false
+    }
+  ]
+}

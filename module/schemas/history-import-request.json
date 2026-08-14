@@ -1,0 +1,32 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/pins.history.import/1/request",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["appid","anchor"],
+  "properties":{
+    "schema_version":{"enum":["1.0","2.1"]},
+    "source":{"const":"steamdb-browser-observation"},
+    "appid":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "anchor":{"$ref":"#/$defs/anchor"},
+    "builds":{"type":"array","minItems":1,"maxItems":100000,"items":{"type":"object","maxProperties":8}},
+    "apps":{"type":"array","minItems":1,"maxItems":10000,"items":{"type":"object","maxProperties":16}},
+    "shared_depot_histories":{"type":"array","maxItems":100000,"items":{"type":"object","maxProperties":16}},
+    "availability_policy":{"type":"object","maxProperties":8}
+  },
+  "oneOf":[{"required":["builds"]},{"required":["apps","shared_depot_histories","availability_policy"]}],
+  "$defs":{
+    "anchor":{
+      "type":"object","additionalProperties":false,
+      "required":["build_id","depots"],
+      "properties":{
+        "build_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+        "depots":{
+          "type":"object","minProperties":1,"maxProperties":100000,
+          "propertyNames":{"pattern":"^[1-9][0-9]{0,9}$"},
+          "additionalProperties":{"type":"string","pattern":"^[1-9][0-9]{0,19}$"}
+        }
+      }
+    }
+  }
+}

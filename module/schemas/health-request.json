@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"ronin://module/slsteam/health.evidence.get/1/request","type":"object","additionalProperties":false}

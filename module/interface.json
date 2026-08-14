@@ -1,9 +1,15 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
+  "limits": {
+    "max_request_bytes": 1048576,
+    "max_response_bytes": 4194304,
+    "max_event_bytes": 262144,
+    "max_outstanding_requests": 32
+  },
   "control": [
     {
-      "id": "ronin-control",
-      "component": "control",
+      "id": "slssteam-control",
+      "component": "slssteam-control",
       "protocol": "tsuki-envelope-v1",
       "encoding": "json",
       "carrier": "unix-socket"
@@ -13,32 +19,139 @@
     {
       "id": "tsuki.steam.app.validate",
       "version": "1",
-      "required": true
+      "required": true,
+      "execution": "operation",
+      "operation_kind": "steam.app.validate",
+      "operation_policy": {
+        "cancellable": true,
+        "recoverability": "inspectable",
+        "concurrency_scope": "resource",
+        "max_concurrent": 4,
+        "terminal_retention_ms": 3600000,
+        "progress_min_interval_ms": 100,
+        "event_replay": "latest"
+      },
+      "operation_result": "ronin://host/tsuki.steam.app.validate/1/result",
+      "request": "ronin://host/tsuki.steam.app.validate/1/request",
+      "response": "ronin://host/tsuki.steam.app.validate/1/response",
+      "idempotency": "idempotency-keyed",
+      "effects": ["steam-metadata"]
     }
   ],
+  "event_imports": [],
   "exports": [
-    { "id": "pins.list", "component": "control" },
-    { "id": "pins.set", "component": "control" },
-    { "id": "pins.clear", "component": "control" },
-    { "id": "pins.history.import", "component": "control" },
-    { "id": "pins.history.list", "component": "control" },
-    { "id": "pins.history.resolve", "component": "control" }
+    {
+      "id": "pins.list",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/pins-list-request.json",
+      "response": "schemas/pins-catalog-response.json",
+      "idempotency": "read-only",
+      "effects": ["none"]
+    },
+    {
+      "id": "pins.set",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/pins-set-request.json",
+      "response": "schemas/pins-set-response.json",
+      "idempotency": "idempotency-keyed",
+      "effects": ["module-config"]
+    },
+    {
+      "id": "pins.clear",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/pins-clear-request.json",
+      "response": "schemas/pins-clear-response.json",
+      "idempotency": "idempotency-keyed",
+      "effects": ["module-config"]
+    },
+    {
+      "id": "pins.history.import",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/history-import-request.json",
+      "response": "schemas/history-response.json",
+      "idempotency": "idempotency-keyed",
+      "effects": ["module-data"]
+    },
+    {
+      "id": "pins.history.list",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/app-request.json",
+      "response": "schemas/history-list-response.json",
+      "idempotency": "read-only",
+      "effects": ["none"]
+    },
+    {
+      "id": "pins.history.resolve",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/history-resolve-request.json",
+      "response": "schemas/history-resolve-response.json",
+      "idempotency": "read-only",
+      "effects": ["none"]
+    },
+    {
+      "id": "settings.get",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/settings-get-request.json",
+      "response": "schemas/settings-state-response.json",
+      "idempotency": "read-only",
+      "effects": ["none"]
+    },
+    {
+      "id": "settings.set",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/settings-set-request.json",
+      "response": "schemas/settings-set-response.json",
+      "idempotency": "idempotency-keyed",
+      "effects": ["module-config"]
+    },
+    {
+      "id": "health.evidence.get",
+      "component": "slssteam-control",
+      "version": "1",
+      "execution": "immediate",
+      "request": "schemas/health-request.json",
+      "response": "schemas/health-evidence-response.json",
+      "idempotency": "read-only",
+      "effects": ["none"]
+    }
   ],
   "events": [],
+  "data_imports": [
+    {
+      "id": "steamdb.history.observation",
+      "kind": "selected-file",
+      "target": "pins.history.import",
+      "media_types": ["application/json"],
+      "max_raw_bytes": 1048576,
+      "max_decoded_bytes": 1048576,
+      "max_items": 100000,
+      "user_gesture": "required",
+      "provenance": "record-source-and-sha256"
+    }
+  ],
   "logging": {
     "sources": [
       {
         "kind": "line-file",
-        "path": "$HOME/.SLSsteam.log",
+        "path": "$MODULE_LOG/SLSsteam.log",
         "format": "bracket-level-lines",
-        "default_level": "info",
-        "levels": {
-          "Once": "info",
-          "Debug": "debug",
-          "Info": "info",
-          "Notify": "info",
-          "Warn": "warn"
-        }
+        "max_line_bytes": 65536
       }
     ]
   },
@@ -46,11 +159,46 @@
     "aggregate": "all-required",
     "components": [
       {
+        "component": "slssteam-control",
+        "required": false,
+        "readiness": {
+          "kind": "protocol-ready",
+          "timeout_ms": 10000
+        },
+        "liveness": {
+          "kind": "ping",
+          "interval_ms": 2000,
+          "timeout_ms": 5000
+        }
+      },
+      {
         "component": "steam-hooks",
         "required": true,
         "readiness": {
-          "kind": "mapped-library",
-          "grace_ms": 20000
+          "kind": "runtime-evidence",
+          "evidence": {
+            "carrier": "companion-export",
+            "producer": "slssteam-control",
+            "export": "health.evidence.get",
+            "max_bytes": 16384,
+            "freshness_ms": 30000,
+            "compatibility_subject": "steam-build"
+          }
+        }
+      }
+    ],
+    "features": [
+      {
+        "id": "added-games",
+        "component": "steam-hooks",
+        "required": true,
+        "evidence": {
+          "carrier": "companion-export",
+          "producer": "slssteam-control",
+          "export": "health.evidence.get",
+          "max_bytes": 16384,
+          "freshness_ms": 30000,
+          "compatibility_subject": "steam-build"
         }
       }
     ]

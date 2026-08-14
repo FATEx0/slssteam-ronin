@@ -1,9 +1,11 @@
 #include "log.hpp"
 
 #include "config.hpp"
+#include "ronin_env.hpp"
 
 #include <cstdlib>
 #include <memory>
+#include <string>
 
 CLog::CLog(const char* path) : path(path)
 {
@@ -43,6 +45,11 @@ void CLog::notifyUser(UserMsg msg, const std::string& detail)
 
 CLog* CLog::createDefaultLog()
 {
+	const char* managed = getenv(("TSUKI_RONIN_LOG_FILE_" + std::string(kRoninEnvId)).c_str());
+	if (managed && *managed)
+	{
+		return new CLog(managed);
+	}
 	const char* home = getenv("HOME");
 	if (home)
 	{

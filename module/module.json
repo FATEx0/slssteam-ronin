@@ -1,8 +1,8 @@
 {
-  "spec_version": "2.0",
+  "spec_version": "3.0",
   "id": "slsteam",
-  "name": "SLSsteam Ronin",
-  "version": "1.0.0",
+  "name": "SLSsteam",
+  "version": "1.0.0-beta.1",
   "description": "Upstream-first Steam launch extension for added-game support.",
   "repository": "https://github.com/FATEx0/slssteam-ronin",
   "features": [
@@ -15,24 +15,39 @@
   "capabilities": [
     {
       "id": "steam.launch.audit-library",
-      "reason": "Install the Ronin Steam client hooks at launch"
+      "reason": "Install the ordered SLSsteam Steam-client hooks at launch"
     },
     {
       "id": "filesystem.config",
-      "reason": "Read and update established SLSsteam configuration"
+      "reason": "Let slssteam-control solely own the legacy SLSsteam YAML"
+    },
+    {
+      "id": "filesystem.data",
+      "reason": "Persist validated browser-assisted manifest history"
     },
     {
       "id": "filesystem.steam-read",
-      "reason": "Discover Lua-added games and Steam product data"
+      "reason": "Compatibility access for Lua-added games and Steam product data"
     },
     {
       "id": "filesystem.steam-write",
-      "reason": "Provision app-info, depot keys and manifests for added games"
+      "reason": "Compatibility access for app-info, depot keys and manifests"
+    },
+    {
+      "id": "filesystem.grant.request",
+      "reason": "Migrate Steam target writes to operation-scoped grants"
     },
     {
       "id": "network.outbound",
-      "origins": ["https://*.steamcontent.com", "https://api.steampowered.com"],
-      "reason": "Retrieve Steam product information and manifests"
+      "reason": "Compatibility access to Steam product and manifest services"
+    },
+    {
+      "id": "secrets.manage",
+      "reason": "Classify imported depot keys and tickets as sensitive inputs"
+    },
+    {
+      "id": "mutation.high-impact",
+      "reason": "Stage and audit manifest publication into Steam targets"
     },
     {
       "id": "notifications.desktop",
@@ -44,18 +59,31 @@
     },
     {
       "id": "steam.ui.hosted-view",
-      "reason": "Show the module-owned manifest pin manager in the Tsuki overlay"
+      "reason": "Show the package-owned Manifest Pins manager"
+    }
+  ],
+  "compatibility_profiles": [
+    {
+      "id": "ronin-2-broad-steam-filesystem",
+      "reason": "Injected legacy code still discovers sensitive depot/ticket inputs and mutates Steam-owned manifest targets directly",
+      "removal_milestone": "slssteam-grant-handles"
+    },
+    {
+      "id": "ronin-2-ambient-network",
+      "reason": "Injected legacy manifest transport still resolves dynamic Steam CDN origins internally",
+      "removal_milestone": "slssteam-network-grants"
     }
   ],
   "dependencies": [],
   "runtime": {
     "components": [
       {
-        "id": "control",
+        "id": "slssteam-control",
         "kind": "subprocess",
-        "entry": "payload/ronin-control",
+        "activation": "installed",
+        "entry": "payload/slssteam-control",
         "args": [],
-        "control": "ronin-control",
+        "control": "slssteam-control",
         "restart": {
           "policy": "on-failure",
           "max_attempts": 3
@@ -67,6 +95,7 @@
       {
         "id": "steam-hooks",
         "kind": "steam-launch-extension",
+        "activation": "enabled",
         "apply": "steam-restart",
         "artifacts": [
           {
@@ -93,12 +122,14 @@
         }
       }
     ],
-    "activation_order": ["control", "steam-hooks"],
-    "shutdown_order": ["steam-hooks", "control"]
+    "activation_order": ["slssteam-control", "steam-hooks"],
+    "shutdown_order": ["steam-hooks", "slssteam-control"]
   },
   "documents": {
     "settings": "settings.json",
     "interface": "interface.json",
-    "views": "views.json"
+    "views": "views.json",
+    "resources": "resources.json",
+    "content": "content.json"
   }
 }

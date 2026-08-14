@@ -256,6 +256,17 @@ correctly unaware of Tsuki and Ronin.
 
 - CEF contract and launch-boundary work in `76d9d88`
 - `5f31529` — preserve inherited `LD_LIBRARY_PATH` entries
+- 2026-07-31 — `src/log.cpp` and `src/main.cpp` read
+  `TSUKI_RONIN_LOG_FILE_M736C737465616D`/
+  `TSUKI_RONIN_RUNTIME_DIR_M736C737465616D` instead of
+  the unsuffixed names. Tsuki's `steamlaunchext.lua` now namespaces every
+  steam-launch-extension module's fixed runtime bindings by module id, since
+  all such modules share one Steam process/environment and a second module
+  (e.g. `cloudredirect-ronin`) with a different data/log/runtime path would
+  otherwise collide with SLSsteam's on the same global env var name. The
+  `slssteam-control` companion and `sls-prelaunch` remain on the unsuffixed
+  names deliberately: each runs as its own isolated subprocess, so there is
+  no shared-environment collision to guard against there.
 
 **Acceptance**
 

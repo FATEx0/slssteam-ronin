@@ -5,7 +5,7 @@
 // Every desktop popup the end user can ever see is drawn from THIS catalog,
 // as a friendly, localized sentence — never a raw developer diagnostic like
 // "ManifestFetch: blob depot=445701 gid=... all CDN hosts failed (HTTP=503)".
-// Those raw lines still go to ~/.SLSsteam.log for debugging; the screen only
+// Those raw lines still go to the managed SLSsteam log for debugging; the screen only
 // ever shows the catalog text.
 //
 // The catalog is PURE (no openssl / config / logger), like notify.hpp, so it

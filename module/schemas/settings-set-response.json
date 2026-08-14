@@ -1,0 +1,19 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/settings.set/1/response",
+  "type":"object","additionalProperties":false,
+  "required":["revision","values"],
+  "properties":{
+    "revision":{"type":"integer","minimum":0},
+    "values":{
+      "allOf":[{"$ref":"settings-set-request.json#/$defs/values"}],
+      "required":[
+        "PlayNotOwnedGames","DisableFamilyShareLock","DisableParentalRestrictions",
+        "Notifications","NotifyInit","DisableCloud","Achievements","DisableUpdates",
+        "FakeEmail","FakeWalletBalance","AutoFilterList","UseWhitelist",
+        "WarnHashMissmatch","API","ExtendedLogging","LogLevel","MaxSchemaTries",
+        "DumpClientInterfaces","AchievementOwnerId","AchievementOwners"
+      ]
+    }
+  }
+}

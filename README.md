@@ -14,6 +14,10 @@ selection, and Tsuki integration.
 > disable optional features until their patterns and object assumptions are
 > revalidated. This repository is under active development and is not yet a
 > general-purpose portable release.
+>
+> The package contract is Ronin 3.0. Current Ronin 2.0 Tsuki builds must reject
+> it until the matching lifecycle, settings-interface, evidence, import and
+> authority behavior lands in the host.
 
 ## Choose the right branch
 
@@ -60,15 +64,15 @@ in this repository.
 
 ## Build and validate
 
-Enter the repository's declared Nix development environment and build the
-native payload plus package-owned helpers:
+Build the native payload and all package-owned helpers through the repository's
+Nix package:
 
 ```sh
-nix develop
-make audit-libs
+nix build 'path:.#sls-steam'
 ```
 
-Build the complete staged module:
+For a local package staging build in an environment with the required compiler
+and 32-bit dependencies:
 
 ```sh
 make ronin-module

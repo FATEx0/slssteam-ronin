@@ -1,170 +1,438 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "storage": {
-    "adapter": "line-scalars",
+    "adapter": "interface",
     "path": "$USER_CONFIG/SLSsteam/config.yaml",
+    "read_export": "settings.get",
+    "write_export": "settings.set",
     "preserve_unknown": true,
     "atomic": true,
-    "min_recognized": 3
+    "ownership": {
+      "mode": "component",
+      "component": "slssteam-control",
+      "readers": ["steam-hooks"],
+      "revisioned": true
+    }
   },
   "groups": [
-    { "id": "general", "label": "General", "order": 0 },
-    { "id": "notifications", "label": "Notifications", "order": 10 },
-    { "id": "fake-info", "label": "Fake Info", "order": 20 },
-    { "id": "advanced", "label": "Advanced", "order": 30 }
+    {
+      "id": "general",
+      "label": "General",
+      "order": 0
+    },
+    {
+      "id": "notifications",
+      "label": "Notifications",
+      "order": 10
+    },
+    {
+      "id": "fake-info",
+      "label": "Fake Info",
+      "order": 20
+    },
+    {
+      "id": "advanced",
+      "label": "Advanced",
+      "order": 30
+    }
   ],
   "fields": [
     {
-      "key": "PlayNotOwnedGames", "type": "bool", "default": false,
-      "tier": "hidden", "label": "Play not-owned games",
+      "key": "PlayNotOwnedGames",
+      "type": "bool",
+      "default": false,
+      "tier": "hidden",
+      "label": "Play not-owned games",
       "description": "Carried over from upstream SLSsteam/slsteam-moon for settings-sync compatibility only. There it globally overrides Apps::checkAppOwnership for every AppId Steam queries, not just AdditionalApps. Ronin's checkAppOwnership (src/feats/apps.cpp) never grew the matching branch -- ownership unlocking here stays scoped to the curated AdditionalApps list. Intentionally unwired; kept hidden and defaulted off so an unrecognized/missing key never trips SLS's own config-sync warnings.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 0 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 0
+      }
     },
     {
-      "key": "DisableFamilyShareLock", "type": "bool", "default": true,
-      "tier": "basic", "label": "Disable Family Sharing lock",
+      "key": "DisableFamilyShareLock",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Disable Family Sharing lock",
       "description": "Stops Family Sharing from locking shared games.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 40 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 40
+      }
     },
     {
-      "key": "DisableParentalRestrictions", "type": "bool", "default": false,
-      "tier": "basic", "label": "Disable parental restrictions",
+      "key": "DisableParentalRestrictions",
+      "type": "bool",
+      "default": false,
+      "tier": "basic",
+      "label": "Disable parental restrictions",
       "description": "Locally disables supported Steam Families restrictions.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 50 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 50
+      }
     },
     {
-      "key": "Notifications", "type": "bool", "default": true,
-      "tier": "basic", "label": "Notifications",
+      "key": "Notifications",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Notifications",
       "description": "Show desktop notifications from Ronin.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Notifications", "order": 0 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "notifications",
+        "order": 0
+      }
     },
     {
-      "key": "NotifyInit", "type": "bool", "default": true,
-      "tier": "basic", "label": "Notify when ready",
+      "key": "NotifyInit",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Notify when ready",
       "description": "Show a notification after Ronin finishes loading.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Notifications", "order": 10 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "notifications",
+        "order": 10
+      }
     },
     {
-      "key": "DisableCloud", "type": "bool", "default": true,
-      "tier": "basic", "label": "Disable Steam Cloud",
+      "key": "DisableCloud",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Disable Steam Cloud",
       "description": "Disable ordinary Steam Cloud for managed added games.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 20 }
+      "requires": [
+        {
+          "module": "cloudredirect",
+          "state": "enabled",
+          "equals": false,
+          "reason": "Managed by CloudRedirect"
+        }
+      ],
+      "requires_policy": "disable",
+      "managed_value": false,
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 20
+      }
     },
     {
-      "key": "Achievements", "type": "bool", "default": true,
-      "tier": "basic", "label": "Achievements for added games",
+      "key": "Achievements",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Achievements for added games",
       "description": "Fetch achievement schemas for games added through Ronin.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 30 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 30
+      }
     },
     {
-      "key": "DisableUpdates", "type": "bool", "default": true,
-      "tier": "basic", "label": "Disable updates for added games",
+      "key": "DisableUpdates",
+      "type": "bool",
+      "default": true,
+      "tier": "basic",
+      "label": "Disable updates for added games",
       "description": "Prevents automatic updates for unowned games managed by Ronin.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "General", "order": 10 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "general",
+        "order": 10
+      }
     },
     {
-      "key": "FakeEmail", "type": "string", "default": "",
-      "tier": "basic", "label": "Fake e-mail",
+      "key": "FakeEmail",
+      "type": "string",
+      "default": "",
+      "tier": "basic",
+      "label": "Fake e-mail",
       "description": "Shows a cosmetic e-mail address in the Steam client.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "text", "group": "Fake Info", "order": 0 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "text",
+        "group": "fake-info",
+        "order": 0
+      }
     },
     {
-      "key": "FakeWalletBalance", "type": "int", "default": 0,
-      "min": 0, "max": 2147483647, "tier": "basic",
+      "key": "FakeWalletBalance",
+      "type": "int",
+      "default": 0,
+      "tier": "basic",
       "label": "Fake wallet balance",
       "description": "Shows a cosmetic wallet balance in the Steam client.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "number", "group": "Fake Info", "order": 10 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "number",
+        "group": "fake-info",
+        "order": 10
+      },
+      "minimum": 0,
+      "maximum": 2147483647
     },
     {
-      "key": "AutoFilterList", "type": "bool", "default": true,
-      "tier": "hidden", "label": "Auto-filter app list",
+      "key": "AutoFilterList",
+      "type": "bool",
+      "default": true,
+      "tier": "hidden",
+      "label": "Auto-filter app list",
       "description": "Carried over from upstream slsteam-moon for settings-sync compatibility only. There it narrows the PlayNotOwnedGames automatic-unlock pool to APPTYPE_GAME/APPLICATION only, excluding DLC/demos/media/etc (see Apps::checkAppOwnership's automaticFilter branch). Ronin never ported that automatic-unlock branch, so this has nothing left to filter. Intentionally unwired; kept hidden and defaulted on so an unrecognized/missing key never trips SLS's own config-sync warnings.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 0 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 0
+      }
     },
     {
-      "key": "UseWhitelist", "type": "bool", "default": false,
-      "tier": "hidden", "label": "Use a whitelist",
+      "key": "UseWhitelist",
+      "type": "bool",
+      "default": false,
+      "tier": "hidden",
+      "label": "Use a whitelist",
       "description": "Flips CConfig::shouldExcludeAppId (src/config.cpp) so AppIds means \"only these\" instead of \"all except these\". Fully implemented, but AppIds has no field of its own in this settings surface to populate -- enabling this with an empty list silently excludes everything except curated AdditionalApps entries, with no way to see or fix why from the UI. Hidden until AppIds gets its own exposed control.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 10 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 10
+      }
     },
     {
-      "key": "WarnHashMissmatch", "type": "bool", "default": false,
-      "tier": "advanced", "label": "Warn on client change",
+      "key": "WarnHashMissmatch",
+      "type": "bool",
+      "default": false,
+      "tier": "advanced",
+      "label": "Warn on client change",
       "description": "Warn when Steam differs from the known client build.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 50 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 50
+      }
     },
     {
-      "key": "API", "type": "bool", "default": true,
-      "tier": "advanced", "label": "Control socket",
-      "description": "Enable Ronin's local compatibility control socket.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 60 }
+      "key": "API",
+      "type": "bool",
+      "default": true,
+      "tier": "advanced",
+      "label": "Legacy command file",
+      "description": "Enable the legacy /tmp/SLSsteam.API command-file interface.",
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 60
+      }
     },
     {
-      "key": "ExtendedLogging", "type": "bool", "default": false,
-      "tier": "advanced", "label": "Verbose logging",
+      "key": "ExtendedLogging",
+      "type": "bool",
+      "default": false,
+      "tier": "advanced",
+      "label": "Verbose logging",
       "description": "Log detailed Steam calls for diagnostics.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 70 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 70
+      }
     },
     {
-      "key": "LogLevel", "type": "enum", "default": 2,
-      "tier": "advanced", "label": "Log level",
+      "key": "LogLevel",
+      "type": "enum",
+      "default": 2,
+      "tier": "advanced",
+      "label": "Log level",
       "description": "Select Ronin's log verbosity.",
-      "enum": [
-        { "value": 0, "label": "Once" },
-        { "value": 1, "label": "Debug" },
-        { "value": 2, "label": "Info" },
-        { "value": 3, "label": "NotifyShort" },
-        { "value": 4, "label": "NotifyLong" },
-        { "value": 5, "label": "Warn" },
-        { "value": 6, "label": "None" }
-      ],
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "select", "group": "Advanced", "order": 80 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "select",
+        "group": "advanced",
+        "order": 80
+      },
+      "options": [
+        {
+          "value": 0,
+          "label": "Once"
+        },
+        {
+          "value": 1,
+          "label": "Debug"
+        },
+        {
+          "value": 2,
+          "label": "Info"
+        },
+        {
+          "value": 3,
+          "label": "NotifyShort"
+        },
+        {
+          "value": 4,
+          "label": "NotifyLong"
+        },
+        {
+          "value": 5,
+          "label": "Warn"
+        },
+        {
+          "value": 6,
+          "label": "None"
+        }
+      ]
     },
     {
-      "key": "MaxSchemaTries", "type": "int", "default": 10,
-      "min": 0, "max": 1000, "tier": "advanced",
+      "key": "MaxSchemaTries",
+      "type": "int",
+      "default": 10,
+      "tier": "advanced",
       "label": "Achievement schema attempts",
       "description": "Maximum Steam CDN attempts when fetching an achievement schema.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "number", "group": "Advanced", "order": 20 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "number",
+        "group": "advanced",
+        "order": 20
+      },
+      "minimum": 0,
+      "maximum": 1000
     },
     {
-      "key": "DumpClientInterfaces", "type": "bool", "default": false,
-      "tier": "hidden", "label": "Dump client interfaces",
+      "key": "DumpClientInterfaces",
+      "type": "bool",
+      "default": false,
+      "tier": "hidden",
+      "label": "Dump client interfaces",
       "description": "Write discovered Steam client interface mappings for diagnostics.",
-      "apply": { "mode": "steam-restart", "target": "steam-hooks" },
-      "ui": { "widget": "toggle", "group": "Advanced", "order": 90 }
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "toggle",
+        "group": "advanced",
+        "order": 90
+      }
     },
     {
-      "key": "AchievementOwnerId", "type": "uint64",
-      "default": "76561198028121353", "tier": "advanced",
+      "key": "AchievementOwnerId",
+      "type": "uint64",
+      "default": "76561198028121353",
+      "tier": "advanced",
       "label": "Default achievement owner",
       "description": "SteamID64 used when no game-specific owner is configured.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "text", "group": "Advanced", "order": 30 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "text",
+        "group": "advanced",
+        "order": 30
+      }
     },
     {
-      "key": "AchievementOwners", "type": "uint64-map", "default": {},
-      "tier": "advanced", "label": "Per-game achievement owners",
+      "key": "AchievementOwners",
+      "type": "uint64-map",
+      "default": {},
+      "tier": "advanced",
+      "label": "Per-game achievement owners",
       "description": "Optional AppID to owner SteamID64 overrides.",
-      "apply": { "mode": "live", "target": "steam-hooks" },
-      "ui": { "widget": "text", "group": "Advanced", "order": 40 }
+      "apply": {
+        "mode": "live",
+        "target": "steam-hooks",
+        "acknowledgement": "persisted"
+      },
+      "ui": {
+        "widget": "text",
+        "group": "advanced",
+        "order": 40
+      }
     }
   ]
 }

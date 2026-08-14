@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"ronin://module/slsteam/pins.set/1/response","type":"object","additionalProperties":false,"required":["apps","games"],"properties":{"apps":{"type":"array","maxItems":100000},"games":{"type":"array","maxItems":100000}}}

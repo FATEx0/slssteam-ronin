@@ -36,13 +36,13 @@ ifeq ($(shell type mold &> /dev/null && echo "found"),found)
 endif
 
 audit-libs:
-	make -j $(JOBS) bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch bin/ronin-control
+	make -j $(JOBS) bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch bin/slssteam-control
 
 ronin-module: audit-libs
 	cp bin/SLSsteam.so module/payload/SLSsteam.so
 	cp bin/library-inject.so module/payload/library-inject.so
 	cp bin/sls-prelaunch module/payload/sls-prelaunch
-	cp bin/ronin-control module/payload/ronin-control
+	cp bin/slssteam-control module/payload/slssteam-control
 	mkdir -p module/assets/steamdb-history-extension
 	cp tools/steamdb-history-extension/* module/assets/steamdb-history-extension/
 
@@ -76,6 +76,11 @@ test-firstseen:
 		tools/test_firstseen.cpp -o /tmp/test_firstseen
 	/tmp/test_firstseen
 
+test-slssteam-control: bin/slssteam-control
+	UV_CACHE_DIR=$${UV_CACHE_DIR:-/tmp/codex-uv-cache} \
+		SLSSTEAM_CONTROL_BIN=bin/slssteam-control \
+		uv run python tools/test_slssteam_control.py
+
 tools:
 	make -j 2 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber tools/schema-grabber/bin/Release/net9.0/linux-x64/publish/schema-grabber
 
@@ -93,9 +98,10 @@ bin/sls-prelaunch: tools/sls-prelaunch.cpp $(filter-out obj/main.o,$(objs)) $(li
 	$(CXX) $(CXXFLAGS) -Iinclude $^ -o $@ \
 		$(filter-out -shared,$(LDFLAGS))
 
-bin/ronin-control: tools/ronin-control.cpp
+bin/slssteam-control: tools/slssteam-control.cpp
 	@mkdir -p bin
-	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic $< -o $@
+	g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic $< -o $@ \
+		$(shell pkg-config --libs "openssl")
 
 tools/ticket-grabber/bin/Release/net9.0/linux-x64/publish/ticket-grabber:
 	sh tools/ticket-grabber/build.sh
@@ -114,6 +120,14 @@ obj/config.o: src/config.cpp res/config.yaml
 	$(shell ./embed-config.sh)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -isysteminclude -MMD -MP -c $< -o $@
+
+# module/module.json's "id" is these files' only source for the Ronin
+# runtime-binding suffix. One atomic generated-header target avoids two
+# parallel object recipes racing to overwrite the same source file.
+src/ronin_env.hpp: module/module.json embed-module-env.sh
+	./embed-module-env.sh
+
+obj/log.o obj/main.o: src/ronin_env.hpp
 
 -include $(deps)
 obj/%.o : src/%.cpp
@@ -168,6 +182,6 @@ release: rebuild zips
 
 .PHONY: audit-libs ronin-module deploy-tsuki-module rollback-tsuki-module \
 	test-manifestpin-patterns test-depotquarantine-patterns test-steamstub \
-	test-firstseen \
+	test-firstseen test-slssteam-control \
 	tools build clean \
 	rebuild zips

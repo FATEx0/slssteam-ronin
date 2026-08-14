@@ -47,14 +47,15 @@ validate_package()
 	package=$1
 	if [ -n "${PYTHON:-}" ]; then
 		"$PYTHON" "$validator" "$package"
-	elif command -v python3 >/dev/null 2>&1; then
-		python3 "$validator" "$package"
+	elif command -v uv >/dev/null 2>&1; then
+		UV_CACHE_DIR=${UV_CACHE_DIR:-/tmp/codex-uv-cache} \
+			uv run --project "$sdk_root" python "$validator" "$package"
 	elif command -v nix-shell >/dev/null 2>&1; then
 		RONIN_VALIDATE_SCRIPT=$validator RONIN_VALIDATE_PACKAGE=$package \
 			nix-shell -p python3 --run \
 			'python3 "$RONIN_VALIDATE_SCRIPT" "$RONIN_VALIDATE_PACKAGE"'
 	else
-		echo "Python 3 is required to validate the Ronin package" >&2
+		echo "uv (or an explicit PYTHON) is required to validate the Ronin package" >&2
 		exit 1
 	fi
 }

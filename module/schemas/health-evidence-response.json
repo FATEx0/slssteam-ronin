@@ -1,0 +1,20 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/health.evidence.get/1/response",
+  "type":"object","additionalProperties":false,
+  "required":["module_id","component","producer","carrier","observed_at","process_instance","compatibility_subject","compatibility_value","status","digest"],
+  "properties":{
+    "module_id":{"const":"slsteam"},
+    "component":{"const":"steam-hooks"},
+    "producer":{"const":"slssteam-control"},
+    "carrier":{"const":"companion-export"},
+    "observed_at":{"type":"string","format":"date-time"},
+    "process_instance":{"type":"string","minLength":1,"maxLength":256},
+    "compatibility_subject":{"const":"steam-build"},
+    "compatibility_value":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},
+    "status":{"enum":["ready","degraded","failed"]},
+    "code":{"type":"string","minLength":1,"maxLength":128},
+    "detail":{"type":"string","maxLength":4096},
+    "digest":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"}
+  }
+}

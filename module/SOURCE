@@ -18,10 +18,10 @@ Working-tree stability delta:
 
 Packaged artifacts:
 
-4016779e32f2fd39e91fc30f32ce254fd0133c03723d63281e029c84fdacda34  payload/SLSsteam.so
+12cc8dd75e8b83d321ac8da2c388e52dd23742616b27392f3afa2c041bd29e37  payload/SLSsteam.so
 f2758562bddf8ff4447afe78988c54cde2791518fecf3d2a7bed290b4442e06b  payload/library-inject.so
-9765d1d34357ffc5c9d8d87876ac7e72dc2da439ca5a999b3412dcf1303c41b3  payload/sls-prelaunch
-de5d79ced17028f6a68b641413f11fedce82bc3e7ebfed7d37cdeb86e06d9163  payload/ronin-control
+9e4b1bc818a79449c288db2bd108195c08bbe013d23377237372e017dfa8e1d4  payload/sls-prelaunch
+a809a4b111c609713fb6bad3cf8797909cbe7fe452f1318ed73961c37cac8b25  payload/slssteam-control
 
 SteamStub ownership is handled inside SLSsteam's existing
 GetAppOwnershipTicketExtendedData hook. When Steam has no genuine ticket for a
@@ -40,7 +40,7 @@ rendered by SteamDB in an explicitly opened browser session: build transitions,
 all rendered depot sections and their categories/ownership/descriptions/Size/DL
 values, branches, DLC relationships, raw depot change events, and targeted
 per-depot manifest histories for shared/redistributable payloads.
-`ronin-control` treats that file as an untrusted observation: it anchors the
+`slssteam-control` treats that file as an untrusted observation: it anchors the
 newest build to Steam's current local depot map, verifies every transition
 while walking backwards, and installs the cache atomically only if the entire
 observed chain joins. DLC and shared releases inside a base-build interval
@@ -58,11 +58,12 @@ public build. SteamDB history JSON remains an explicit page-level import.
 
 Configuration files are forward-compatible. Missing optional collection
 sections mean an empty collection. Missing scalar settings use their declared
-safe defaults but remain a visible schema-drift warning until Ronin's
-line-scalar transaction writes the complete declared settings set. The Ronin
-settings document must therefore cover every active scalar consumed by
-SLSsteam, including MaxSchemaTries, DisableUpdates, and DumpClientInterfaces.
-Malformed YAML and genuine parsing failures remain user-visible.
+safe defaults. `slssteam-control` is the sole document writer: its revisioned
+`settings.get`/`settings.set` exports preserve unknown fields and replace the
+document atomically, while Manifest Pins use the same writer. The Ronin
+settings document covers every active scalar consumed by SLSsteam, including
+MaxSchemaTries, DisableUpdates, and DumpClientInterfaces. Malformed YAML and
+genuine parsing failures remain user-visible.
 
 Steam's native Date Added value for a discovered application comes from
 `cache/ronin-first-seen.yaml`. The package prelaunch phase records an AppID only

@@ -10,7 +10,7 @@ Load this directory as an unpacked extension, open
 press the extension button. Import the downloaded JSON from SLSsteam Ronin's
 Manifest Pins page.
 
-The JSON is an observation, not a trusted manifest map. `ronin-control`
+The JSON is an observation, not a trusted manifest map. `slssteam-control`
 combines it with the current local Steam snapshot, verifies every
 `old -> new` transition while walking backwards, and rejects the entire import
 if any link does not join. The cache contains only the history SteamDB made

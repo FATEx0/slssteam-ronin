@@ -5,18 +5,25 @@
 // transport, while all SLS-specific config knowledge stays in this package.
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <openssl/sha.h>
+
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
+#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <filesystem>
 #include <map>
 #include <regex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -145,6 +152,7 @@ bool decimal(const std::string& value, uint64_t max)
 	{
 		if (c < '0' || c > '9') return false;
 		const unsigned digit = static_cast<unsigned>(c - '0');
+		if (digit > max) return false;
 		if (result > (max - digit) / 10) return false;
 		result = result * 10 + digit;
 	}
@@ -432,7 +440,7 @@ void savePins(const std::string& path, const Pins& pins)
 	}
 	lines.erase(lines.begin() + static_cast<long>(begin), lines.begin() + static_cast<long>(end));
 	lines.insert(lines.begin() + static_cast<long>(begin), block.begin(), block.end());
-	const std::string temporary = path + ".ronin-control.tmp";
+	const std::string temporary = path + ".slssteam-control.tmp";
 	{
 		std::ofstream output(temporary, std::ios::trunc);
 		if (!output) throw std::runtime_error("cannot create temporary config");
@@ -504,6 +512,8 @@ std::string catalogJson(const Pins& pins)
 
 std::string configPath()
 {
+	if (const char* managed = std::getenv("TSUKI_RONIN_SETTINGS_PATH");
+	    managed && *managed) return managed;
 	const char* home = std::getenv("HOME");
 	if (!home || !*home) throw std::runtime_error("HOME is unset");
 	return std::string(home) + "/.config/SLSsteam/config.yaml";
@@ -511,6 +521,9 @@ std::string configPath()
 
 std::string historyPath(uint32_t appid)
 {
+	if (const char* managed = std::getenv("TSUKI_RONIN_DATA_DIR");
+	    managed && *managed)
+		return std::string(managed) + "/manifest-history/" + std::to_string(appid) + ".json";
 	const char* home = std::getenv("HOME");
 	if (!home || !*home) throw std::runtime_error("HOME is unset");
 	return std::string(home) + "/.config/SLSsteam/ronin/manifest-history/"
@@ -995,8 +1008,337 @@ void saveHistory(uint32_t appid, const std::string& encoded)
 	}
 }
 
+std::string readFile(const std::string& path)
+{
+	std::ifstream input(path, std::ios::binary);
+	if (!input) throw std::runtime_error("cannot read " + path);
+	return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+std::string sha256(const std::string& value)
+{
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	SHA256(reinterpret_cast<const unsigned char*>(value.data()), value.size(), digest);
+	static constexpr char hex[] = "0123456789abcdef";
+	std::string out;
+	out.reserve(SHA256_DIGEST_LENGTH * 2);
+	for (const unsigned char byte : digest)
+	{
+		out += hex[byte >> 4];
+		out += hex[byte & 15];
+	}
+	return out;
+}
+
+uint64_t documentRevision(const std::string& value)
+{
+	// Thirteen hex digits fit inside JSON's exactly representable integer range.
+	return std::stoull(sha256(value).substr(0, 13), nullptr, 16);
+}
+
+std::string yamlString(const std::string& value)
+{
+	std::string out = "\"";
+	for (const char c : value)
+	{
+		if (c == '"' || c == '\\') out += '\\';
+		out += c;
+	}
+	return out + '"';
+}
+
+std::string yamlScalarJson(const std::string& raw, Json::Kind kind)
+{
+	const std::string value = trim(raw);
+	if (kind == Json::Bool)
+	{
+		if (value == "yes" || value == "true") return "true";
+		if (value == "no" || value == "false") return "false";
+		throw std::runtime_error("invalid boolean in settings document");
+	}
+	if (kind == Json::Number)
+	{
+		if (!decimal(value, INT32_MAX)) throw std::runtime_error("invalid integer in settings document");
+		return value;
+	}
+	if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+	{
+		std::string decoded;
+		for (size_t i = 1; i + 1 < value.size(); ++i)
+		{
+			if (value[i] == '\\' && i + 2 < value.size()) ++i;
+			decoded += value[i];
+		}
+		return quote(decoded);
+	}
+	return quote(value);
+}
+
+struct Setting
+{
+	const char* key;
+	Json::Kind kind;
+	const char* defaultJson;
+};
+
+const std::vector<Setting>& settings()
+{
+	static const std::vector<Setting> values = {
+		{"PlayNotOwnedGames", Json::Bool, "false"},
+		{"DisableFamilyShareLock", Json::Bool, "true"},
+		{"DisableParentalRestrictions", Json::Bool, "false"},
+		{"Notifications", Json::Bool, "true"},
+		{"NotifyInit", Json::Bool, "true"},
+		{"DisableCloud", Json::Bool, "true"},
+		{"Achievements", Json::Bool, "true"},
+		{"DisableUpdates", Json::Bool, "true"},
+		{"FakeEmail", Json::String, "\"\""},
+		{"FakeWalletBalance", Json::Number, "0"},
+		{"AutoFilterList", Json::Bool, "true"},
+		{"UseWhitelist", Json::Bool, "false"},
+		{"WarnHashMissmatch", Json::Bool, "false"},
+		{"API", Json::Bool, "true"},
+		{"ExtendedLogging", Json::Bool, "false"},
+		{"LogLevel", Json::Number, "2"},
+		{"MaxSchemaTries", Json::Number, "10"},
+		{"DumpClientInterfaces", Json::Bool, "false"},
+		{"AchievementOwnerId", Json::String, "\"76561198028121353\""},
+	};
+	return values;
+}
+
+std::map<std::string, std::string> topLevelScalars(const std::vector<std::string>& lines)
+{
+	std::map<std::string, std::string> result;
+	const std::regex scalarLine(R"(^([A-Za-z][A-Za-z0-9]*):[ \t]*(.*)$)");
+	for (const std::string& line : lines)
+	{
+		std::smatch match;
+		if (std::regex_match(line, match, scalarLine)) result[match[1]] = match[2];
+	}
+	return result;
+}
+
+std::string settingsValuesJson(const std::vector<std::string>& lines)
+{
+	const auto scalars = topLevelScalars(lines);
+	std::string out = "{";
+	bool first = true;
+	for (const Setting& setting : settings())
+	{
+		if (!first) out += ',';
+		first = false;
+		const auto found = scalars.find(setting.key);
+		out += quote(setting.key) + ':'
+		    + (found == scalars.end() || trim(found->second).empty()
+		       ? setting.defaultJson : yamlScalarJson(found->second, setting.kind));
+	}
+	out += ",\"AchievementOwners\":{";
+	bool firstOwner = true;
+	const std::regex ownerLine(R"(^[ \t]{2}([0-9]+):[ \t]*[\"']?([0-9]+)[\"']?[ \t]*$)");
+	bool inOwners = false;
+	for (const std::string& line : lines)
+	{
+		if (line == "AchievementOwners:") { inOwners = true; continue; }
+		if (inOwners && !line.empty() && line[0] != ' ' && line[0] != '\t') break;
+		if (!inOwners) continue;
+		std::smatch match;
+		if (!std::regex_match(line, match, ownerLine)
+		    || !decimal(match[1], UINT32_MAX) || !decimal(match[2], UINT64_MAX))
+			continue;
+		if (!firstOwner) out += ',';
+		firstOwner = false;
+		out += quote(match[1]) + ':' + quote(match[2]);
+	}
+	return out + "}}";
+}
+
+std::string settingsState(const std::string& content)
+{
+	std::istringstream input(content);
+	std::vector<std::string> lines;
+	for (std::string line; std::getline(input, line);) lines.push_back(line);
+	return "{\"revision\":" + std::to_string(documentRevision(content))
+	    + ",\"values\":" + settingsValuesJson(lines) + '}';
+}
+
+std::string settingYaml(const Json& value)
+{
+	switch (value.kind)
+	{
+		case Json::Bool: return value.boolean ? "yes" : "no";
+		case Json::Number: return value.text;
+		case Json::String: return yamlString(value.text);
+		default: throw std::runtime_error("setting value is not scalar");
+	}
+}
+
+void atomicWrite(const std::string& path, const std::vector<std::string>& lines)
+{
+	struct stat original{};
+	if (::stat(path.c_str(), &original) != 0) throw std::runtime_error("cannot stat " + path);
+	const std::string temporary = path + ".slssteam-control.tmp";
+	{
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("cannot create temporary settings document");
+		for (const auto& line : lines) output << line << '\n';
+		output.flush();
+		if (!output) throw std::runtime_error("failed writing settings document");
+	}
+	if (::chmod(temporary.c_str(), original.st_mode & 07777) != 0
+	    || ::rename(temporary.c_str(), path.c_str()) != 0)
+	{
+		::unlink(temporary.c_str());
+		throw std::runtime_error("atomic settings replacement failed");
+	}
+}
+
+std::string updateSettings(const Json& payload)
+{
+	const Json* revision = payload.get("base_revision");
+	const Json* values = payload.get("values");
+	if (!revision || revision->kind != Json::Number || !values || values->kind != Json::Object)
+		throw std::runtime_error("settings.set requires base_revision and values");
+	const std::string path = configPath();
+	const std::string current = readFile(path);
+	if (!decimal(revision->text, UINT64_MAX)
+	    || std::stoull(revision->text) != documentRevision(current))
+		throw std::runtime_error("settings document revision conflict");
+
+	std::istringstream input(current);
+	std::vector<std::string> lines;
+	for (std::string line; std::getline(input, line);) lines.push_back(line);
+	const auto known = settings();
+	for (const auto& [key, value] : values->object)
+	{
+		if (key == "AchievementOwners")
+		{
+			if (value.kind != Json::Object || value.object.size() > 100000)
+				throw std::runtime_error("AchievementOwners must be a bounded object");
+			size_t begin = lines.size(), end = lines.size();
+			for (size_t i = 0; i < lines.size(); ++i)
+				if (lines[i] == "AchievementOwners:")
+				{
+					begin = i;
+					end = i + 1;
+					while (end < lines.size()
+					       && (lines[end].empty() || lines[end][0] == ' ' || lines[end][0] == '\t'))
+						++end;
+					break;
+				}
+			std::vector<std::string> block{"AchievementOwners:"};
+			for (const auto& [appid, owner] : value.object)
+			{
+				if (!decimal(appid, UINT32_MAX) || owner.kind != Json::String
+				    || !decimal(owner.text, UINT64_MAX))
+					throw std::runtime_error("invalid AchievementOwners entry");
+				block.push_back("  " + appid + ": \"" + owner.text + "\"");
+			}
+			if (begin == lines.size()) lines.insert(lines.end(), block.begin(), block.end());
+			else
+			{
+				lines.erase(lines.begin() + static_cast<long>(begin), lines.begin() + static_cast<long>(end));
+				lines.insert(lines.begin() + static_cast<long>(begin), block.begin(), block.end());
+			}
+			continue;
+		}
+		const auto spec = std::find_if(known.begin(), known.end(),
+		    [&](const Setting& item) { return key == item.key; });
+		if (spec == known.end() || value.kind != spec->kind)
+			throw std::runtime_error("unknown or invalid setting: " + key);
+		if (value.kind == Json::String && value.text.size() > 4096)
+			throw std::runtime_error("setting string exceeds 4096 bytes");
+		if (value.kind == Json::String && key == "AchievementOwnerId"
+		    && !decimal(value.text, UINT64_MAX))
+			throw std::runtime_error("invalid AchievementOwnerId");
+		if (value.kind == Json::Number)
+		{
+			uint64_t maximum = INT32_MAX;
+			if (key == "LogLevel") maximum = 6;
+			else if (key == "MaxSchemaTries") maximum = 1000;
+			if (!decimal(value.text, maximum))
+				throw std::runtime_error("setting integer is outside its declared range");
+		}
+		bool replaced = false;
+		const std::string prefix = key + ":";
+		for (std::string& line : lines)
+			if (line.rfind(prefix, 0) == 0)
+			{
+				line = prefix + " " + settingYaml(value);
+				replaced = true;
+				break;
+			}
+		if (!replaced) lines.push_back(prefix + " " + settingYaml(value));
+	}
+	atomicWrite(path, lines);
+	return settingsState(readFile(path));
+}
+
+std::string isoTime()
+{
+	const auto now = std::chrono::system_clock::now();
+	const std::time_t time = std::chrono::system_clock::to_time_t(now);
+	std::tm utc{};
+	gmtime_r(&time, &utc);
+	char buffer[32];
+	std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
+	return buffer;
+}
+
+std::string healthEvidence()
+{
+	const char* configured = std::getenv("TSUKI_RONIN_RUNTIME_DIR");
+	const std::filesystem::path directory =
+	    configured && *configured ? configured : "/tmp";
+	for (const auto& item : std::filesystem::directory_iterator(directory))
+	{
+		const std::string name = item.path().filename();
+		const std::string prefix = ".slssteam-ronin.ready.";
+		if (name.rfind(prefix, 0) != 0 || !decimal(name.substr(prefix.size()), INT32_MAX))
+			continue;
+		const int fd = ::open(item.path().c_str(), O_RDONLY | O_CLOEXEC);
+		if (fd < 0) continue;
+		const bool heldByProducer = ::flock(fd, LOCK_EX | LOCK_NB) != 0 && errno == EWOULDBLOCK;
+		if (!heldByProducer) { ::flock(fd, LOCK_UN); ::close(fd); continue; }
+		const std::string marker = readFile(item.path());
+		::close(fd);
+		Json record;
+		try { record = Parser(marker).parse(); } catch (...) { continue; }
+		const Json* hash = record.get("steamclient_sha256");
+		if (!hash || hash->kind != Json::String
+		    || !std::regex_match(hash->text, std::regex("[0-9a-f]{64}"))) continue;
+		const std::string pid = name.substr(prefix.size());
+		std::ifstream stat("/proc/" + pid + "/stat");
+		std::string statLine;
+		if (!std::getline(stat, statLine)) continue;
+		const auto close = statLine.rfind(')');
+		std::istringstream fields(close == std::string::npos ? "" : statLine.substr(close + 2));
+		std::string field, start;
+		for (unsigned index = 3; index <= 22 && fields >> field; ++index)
+			if (index == 22) start = field;
+		if (start.empty()) continue;
+		return "{\"module_id\":\"slsteam\",\"component\":\"steam-hooks\","
+		    "\"producer\":\"slssteam-control\",\"carrier\":\"companion-export\","
+		    "\"observed_at\":" + quote(isoTime()) + ",\"process_instance\":"
+		    + quote(pid + ":" + start) + ",\"compatibility_subject\":\"steam-build\","
+		    "\"compatibility_value\":\"sha256:" + hash->text + "\",\"status\":\"ready\","
+		    "\"digest\":\"sha256:" + sha256(marker) + "\"}";
+	}
+	const std::string zeros(64, '0');
+	return "{\"module_id\":\"slsteam\",\"component\":\"steam-hooks\","
+	    "\"producer\":\"slssteam-control\",\"carrier\":\"companion-export\","
+	    "\"observed_at\":" + quote(isoTime()) + ",\"process_instance\":\"none\","
+	    "\"compatibility_subject\":\"steam-build\",\"compatibility_value\":\"sha256:"
+	    + zeros + "\",\"status\":\"failed\",\"code\":\"no-live-evidence\","
+	    "\"detail\":\"No live SLSsteam hook readiness producer was found\","
+	    "\"digest\":\"sha256:" + zeros + "\"}";
+}
+
 std::string dispatch(const std::string& method, const Json& payload)
 {
+	if (method == "settings.get") return settingsState(readFile(configPath()));
+	if (method == "settings.set") return updateSettings(payload);
+	if (method == "health.evidence.get") return healthEvidence();
 	if (method == "pins.history.import")
 	{
 		uint32_t appid = 0;

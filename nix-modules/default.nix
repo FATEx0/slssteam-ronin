@@ -11,6 +11,7 @@ pkgs.pkgsi686Linux.stdenv.mkDerivation {
   nativeBuildInputs = with pkgs; [
     pkg-config
     makeWrapper
+    jq
   ];
 
   buildInputs = with pkgs.pkgsi686Linux; [
@@ -24,13 +25,19 @@ pkgs.pkgsi686Linux.stdenv.mkDerivation {
   '';
 
   buildPhase = ''
-    make bin/SLSsteam.so bin/library-inject.so
+    make bin/SLSsteam.so bin/library-inject.so bin/sls-prelaunch
+    ${pkgs.stdenv.cc}/bin/g++ -O2 -std=c++20 -Wall -Wextra -Wpedantic \
+      -I${pkgs.openssl.dev}/include tools/slssteam-control.cpp \
+      -L${pkgs.openssl.out}/lib -Wl,-rpath,${pkgs.openssl.out}/lib \
+      -lcrypto -o bin/slssteam-control
   '';
 
   installPhase = ''
     mkdir -p $out/
     cp bin/SLSsteam.so $out/
     cp bin/library-inject.so $out/
+    cp bin/sls-prelaunch $out/
+    cp bin/slssteam-control $out/
   '';
 
   meta = {

@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/pins.history.list/1/request",
+  "type":"object","additionalProperties":false,"required":["appid"],
+  "properties":{"appid":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"}}
+}

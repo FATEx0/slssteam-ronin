@@ -1,0 +1,37 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/settings.set/1/request",
+  "type":"object","additionalProperties":false,
+  "required":["base_revision","values"],
+  "properties":{
+    "base_revision":{"type":"integer","minimum":0},
+    "values":{"$ref":"#/$defs/values"}
+  },
+  "$defs":{
+    "values":{
+      "type":"object","additionalProperties":false,"minProperties":1,
+      "properties":{
+        "PlayNotOwnedGames":{"type":"boolean"},
+        "DisableFamilyShareLock":{"type":"boolean"},
+        "DisableParentalRestrictions":{"type":"boolean"},
+        "Notifications":{"type":"boolean"},
+        "NotifyInit":{"type":"boolean"},
+        "DisableCloud":{"type":"boolean"},
+        "Achievements":{"type":"boolean"},
+        "DisableUpdates":{"type":"boolean"},
+        "FakeEmail":{"type":"string","maxLength":4096},
+        "FakeWalletBalance":{"type":"integer","minimum":0,"maximum":2147483647},
+        "AutoFilterList":{"type":"boolean"},
+        "UseWhitelist":{"type":"boolean"},
+        "WarnHashMissmatch":{"type":"boolean"},
+        "API":{"type":"boolean"},
+        "ExtendedLogging":{"type":"boolean"},
+        "LogLevel":{"type":"integer","minimum":0,"maximum":6},
+        "MaxSchemaTries":{"type":"integer","minimum":0,"maximum":1000},
+        "DumpClientInterfaces":{"type":"boolean"},
+        "AchievementOwnerId":{"type":"string","pattern":"^[0-9]{1,20}$"},
+        "AchievementOwners":{"type":"object","maxProperties":100000,"additionalProperties":{"type":"string","pattern":"^[0-9]{1,20}$"}}
+      }
+    }
+  }
+}

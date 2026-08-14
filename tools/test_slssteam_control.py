@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Isolated protocol/config test for the package-owned Ronin control helper."""
+"""Isolated protocol/config test for the package-owned SLSsteam control helper."""
 import json
+import fcntl
 import os
 from pathlib import Path
 import socket
@@ -24,7 +25,7 @@ def receive(peer):
     return json.loads(payload)
 
 
-with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
+with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
     home = Path(temporary)
     config_dir = home / ".config/SLSsteam"
     config_dir.mkdir(parents=True)
@@ -35,20 +36,96 @@ with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
     listener = socket.socket(socket.AF_UNIX)
     listener.bind(str(socket_path))
     listener.listen(1)
+    evidence_path = home / f".slssteam-ronin.ready.{os.getpid()}"
+    evidence_file = evidence_path.open("w+")
+    json.dump({"schema_version": "1", "steamclient_sha256": "a" * 64},
+              evidence_file)
+    evidence_file.flush()
+    fcntl.flock(evidence_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     env = os.environ.copy()
     env.update({
         "HOME": str(home),
+        "TSUKI_RONIN_SETTINGS_PATH": str(config),
+        "TSUKI_RONIN_DATA_DIR": str(home / "managed-data"),
+        "TSUKI_RONIN_RUNTIME_DIR": str(home),
         "TSUKI_RONIN_SOCKET": str(socket_path),
         "TSUKI_RONIN_MODULE_ID": "slsteam",
-        "TSUKI_RONIN_COMPONENT_ID": "control",
+        "TSUKI_RONIN_COMPONENT_ID": "slssteam-control",
     })
-    child = subprocess.Popen(["bin/ronin-control"], env=env)
+    control_binary = os.environ.get(
+        "SLSSTEAM_CONTROL_BIN", "bin/slssteam-control"
+    )
+    child = subprocess.Popen([control_binary], env=env)
     peer, _ = listener.accept()
     try:
         send(peer, {"v": 1, "t": "ctl", "id": "1", "method": "init", "payload": {}})
         assert receive(peer)["t"] == "res"
         send(peer, {"v": 1, "t": "ping", "id": "ping-1"})
         assert receive(peer) == {"v": 1, "t": "pong", "id": "ping-1"}
+        send(peer, {
+            "v": 1, "t": "req", "id": "settings-1",
+            "method": "settings.get", "payload": {},
+        })
+        state = receive(peer)["payload"]
+        assert state["values"]["PlayNotOwnedGames"] is True
+        assert state["values"]["DisableCloud"] is True
+        send(peer, {
+            "v": 1, "t": "req", "id": "settings-2",
+            "method": "settings.set",
+            "payload": {
+                "base_revision": state["revision"],
+                "values": {
+                    "DisableCloud": False,
+                    "FakeEmail": "test@example.invalid",
+                    "AchievementOwners": {"600": "76561198028121353"},
+                },
+            },
+        })
+        updated = receive(peer)["payload"]
+        assert updated["revision"] != state["revision"]
+        assert updated["values"]["DisableCloud"] is False
+        assert updated["values"]["AchievementOwners"]["600"] == "76561198028121353"
+        assert "UnknownFutureKey: keep-me" in config.read_text()
+        send(peer, {
+            "v": 1, "t": "req", "id": "settings-stale",
+            "method": "settings.set",
+            "payload": {
+                "base_revision": state["revision"],
+                "values": {"DisableCloud": True},
+            },
+        })
+        assert "revision conflict" in receive(peer)["error"]["message"]
+        for case_id, values, message in (
+            ("settings-loglevel", {"LogLevel": 7}, "outside its declared range"),
+            ("settings-wallet-negative", {"FakeWalletBalance": -1},
+             "outside its declared range"),
+            ("settings-wallet-overflow", {"FakeWalletBalance": 2147483648},
+             "outside its declared range"),
+            ("settings-schema-range", {"MaxSchemaTries": 1001},
+             "outside its declared range"),
+            ("settings-uint64", {
+                "AchievementOwnerId": "18446744073709551616"
+            }, "invalid AchievementOwnerId"),
+        ):
+            send(peer, {
+                "v": 1, "t": "req", "id": case_id,
+                "method": "settings.set",
+                "payload": {
+                    "base_revision": updated["revision"],
+                    "values": values,
+                },
+            })
+            range_error = receive(peer)
+            assert range_error["t"] == "err", range_error
+            assert message in range_error["error"]["message"]
+        send(peer, {
+            "v": 1, "t": "req", "id": "health-1",
+            "method": "health.evidence.get", "payload": {},
+        })
+        evidence = receive(peer)["payload"]
+        assert evidence["status"] == "ready"
+        assert evidence["compatibility_value"] == "sha256:" + "a" * 64
+        assert evidence["process_instance"].startswith(f"{os.getpid()}:")
         send(peer, {
             "v": 1, "t": "req", "id": "2", "method": "pins.set",
             "payload": {
@@ -108,7 +185,7 @@ with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
         assert imported["payload"]["builds"][1]["depots"] == {"800": "200", "801": "400"}
         assert all("999" not in item["depots"] for item in imported["payload"]["builds"])
         assert imported["payload"]["builds"][2]["depots"] == {"800": "200", "801": "350"}
-        cache = home / ".config/SLSsteam/ronin/manifest-history/600.json"
+        cache = home / "managed-data/manifest-history/600.json"
         before_bad_import = cache.read_bytes()
         assert cache.stat().st_mode & 0o777 == 0o600
 
@@ -298,6 +375,7 @@ with tempfile.TemporaryDirectory(prefix="ronin-control-") as temporary:
     finally:
         peer.close()
         listener.close()
+        evidence_file.close()
     assert child.wait(timeout=3) == 0
 
-print("test_ronin_control: ALL PASS")
+print("test_slssteam_control: ALL PASS")

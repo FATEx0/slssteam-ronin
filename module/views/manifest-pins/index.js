@@ -58,7 +58,7 @@ function formatBuild(build) {
   return label;
 }
 
-function importHistory(context, game, observation) {
+function importHistory(context, game, observation, rawText, file, gestureToken) {
   if (String(observation.appid) !== String(game.appid)) {
     throw new Error("History file is for app " + observation.appid +
       ", not app " + game.appid + ".");
@@ -82,11 +82,28 @@ function importHistory(context, game, observation) {
       typeof observation.availability_policy === "object") {
     payload.availability_policy = observation.availability_policy;
   }
-  return context.call("pins.history.import", payload);
+  var bytes = new TextEncoder().encode(rawText);
+  return crypto.subtle.digest("SHA-256", bytes).then(function (digest) {
+    var hex = Array.from(new Uint8Array(digest)).map(function (value) {
+      return value.toString(16).padStart(2, "0");
+    }).join("");
+    return context.importData("steamdb.history.observation", {
+      raw: rawText,
+      payload: payload,
+      media_type: (file && file.type) || "application/json",
+      source: {
+        name: (file && file.name) || "selected JSON file",
+        size: bytes.byteLength,
+        last_modified: file && file.lastModified || 0
+      },
+      sha256: hex,
+      gesture_token: gestureToken
+    });
+  });
 }
 
 function validateApp(context, appid) {
-  return context.call("tsuki.steam.app.validate", { appid: String(appid) });
+  return context.call("tsuki.steam.app.validate", { app_id: String(appid) });
 }
 
 function applyBuild(context, game, build, status, button) {
@@ -308,13 +325,22 @@ function render(context, state) {
   fileInput.accept = "application/json,.json";
   fileInput.hidden = true;
   var importStatus = element("div", "message import-message");
+  var pendingGestureToken = null;
   importButton.addEventListener("click", function () {
+    try {
+      pendingGestureToken = context.beginDataImport("steamdb.history.observation");
+    } catch (error) {
+      importStatus.textContent = String(error && error.message || error);
+      return;
+    }
     fileInput.value = "";
     fileInput.click();
   });
   fileInput.addEventListener("change", function () {
     var file = fileInput.files && fileInput.files[0];
     if (!file) return;
+    var gestureToken = pendingGestureToken;
+    pendingGestureToken = null;
     importButton.disabled = true;
     importStatus.className = "message import-message working";
     importStatus.textContent = "Importing " + file.name + "\u2026";
@@ -324,7 +350,7 @@ function render(context, state) {
         return String(item.appid) === String(observation.appid);
       });
       if (!game) throw new Error("App " + observation.appid + " is not a managed game.");
-      return importHistory(context, game, observation);
+      return importHistory(context, game, observation, text, file, gestureToken);
     }).then(function () {
       importStatus.className = "message import-message success";
       importStatus.textContent = "History imported successfully.";

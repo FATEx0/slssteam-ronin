@@ -1,0 +1,15 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/pins.history.list/1/response",
+  "type":"object","additionalProperties":false,
+  "required":["schema_version","source","appid"],
+  "properties":{
+    "schema_version":{"enum":["1.0","2.1"]},
+    "source":{"const":"steamdb-browser-observation"},
+    "appid":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "builds":{"type":"array","maxItems":100000},
+    "apps":{"type":"array","maxItems":10000},
+    "shared_depot_histories":{"type":"array","maxItems":100000},
+    "availability_policy":{"type":"object","maxProperties":8}
+  }
+}

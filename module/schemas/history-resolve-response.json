@@ -1,0 +1,16 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/pins.history.resolve/1/response",
+  "type":"object","additionalProperties":false,
+  "required":["appid","build_id","depots"],
+  "properties":{
+    "appid":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "build_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "published_at":{"type":"string","minLength":1,"maxLength":64},
+    "depots":{
+      "type":"object","maxProperties":100000,
+      "propertyNames":{"pattern":"^[1-9][0-9]{0,9}$"},
+      "additionalProperties":{"type":"string","pattern":"^[1-9][0-9]{0,19}$"}
+    }
+  }
+}
