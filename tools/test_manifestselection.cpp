@@ -1,12 +1,13 @@
 // Standalone test for the pure manifest selection policy.
 //
 // Build:
-//   g++ -std=c++20 -I include tools/test_manifestselection.cpp \
-//       -o /tmp/test_manifestselection && /tmp/test_manifestselection
+//   g++ -std=c++20 -I src tools/test_manifestselection.cpp -o test_manifestselection
+//   ./test_manifestselection
 
 #include "../src/feats/manifestselection.hpp"
 
 #include <cstdio>
+#include <optional>
 
 static int g_failures = 0;
 
@@ -100,6 +101,57 @@ int main()
 	      "plan budget reaches zero at the deadline");
 	CHECK(ManifestSelection::remainingBudgetMs(12000, 15000) == 0,
 	      "plan budget never becomes negative");
+
+	// A direct YAML/Lua pin starts without an archive. Completing its fetch
+	// inside the current plan must make the first Validate use the pin, without
+	// requiring a restart or a second validation request.
+	{
+		std::optional<uint64_t> size;
+		int waits = 0;
+		const auto pair = ManifestSelection::resolvePinnedPair(
+		    100, 1000, 200, 9000,
+		    [&]() { return size; },
+		    [&](int budgetMs)
+		    {
+			++waits;
+			CHECK(budgetMs == 9000,
+			      "direct-import wait uses only the remaining shared budget");
+			size = 2222;
+			return true;
+		    });
+		CHECK(waits == 1 && pair.pinned && pair.gid == 200 && pair.size == 2222,
+		      "direct-import pin applies during the first Validate without restart");
+	}
+
+	for (const int budget : {9000, 0})
+	{
+		int waits = 0;
+		const auto pair = ManifestSelection::resolvePinnedPair(
+		    100, 1000, 200, budget,
+		    []() { return std::optional<uint64_t>{}; },
+		    [&](int) { ++waits; return false; });
+		CHECK(!pair.pinned && pair.gid == 100 && pair.size == 1000,
+		      "pin failure or timeout preserves the public pair atomically");
+		CHECK(waits == (budget > 0 ? 1 : 0),
+		      "an exhausted shared budget never starts another wait");
+	}
+	{
+		const auto pair = ManifestSelection::resolvePinnedPair(
+		    100, 1000, 200, 9000,
+		    []() { return std::optional<uint64_t>{}; },
+		    [](int) { return true; });
+		CHECK(!pair.pinned && pair.gid == 100 && pair.size == 1000,
+		      "fetched manifest without readable size preserves the public pair");
+	}
+	{
+		int waits = 0;
+		const auto pair = ManifestSelection::resolvePinnedPair(
+		    100, 1000, 200, 9000,
+		    []() { return std::optional<uint64_t>{2222}; },
+		    [&](int) { ++waits; return true; });
+		CHECK(waits == 0 && pair.pinned && pair.gid == 200 && pair.size == 2222,
+		      "archived pin metadata avoids the blocking provider path");
+	}
 
 	// Depot count is validated against CUtlVector's actual allocation, not a
 	// product-policy cap. Large valid plans remain eligible for staging.

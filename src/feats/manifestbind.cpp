@@ -715,6 +715,28 @@ constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 			if (base && ManifestSelection::validVectorBounds(
 			                count, capacity, kDepotEntryStride))
 			{
+				// Direct YAML/Lua pins do not necessarily arrive with an
+				// archived manifest. Start all missing pin fetches before
+				// waiting on any one depot so the bounded executor can work in
+				// parallel under one plan-wide deadline.
+				if (g_pinPlanner)
+				{
+					for (int32_t i = 0; i < count; ++i)
+					{
+						const char* const e =
+						    base + static_cast<size_t>(i) * kDepotEntryStride;
+						const uint32_t depotId =
+						    *reinterpret_cast<const uint32_t*>(e);
+						const uint64_t pin = g_config.getManifestPin(depotId);
+						if (pin
+						    && !ManifestStore::archivedInstalledSize(depotId, pin))
+						{
+							ManifestFetch::submitManifestBlob(
+							    pin, /*appId=*/0, depotId);
+						}
+					}
+				}
+
 				int32_t writeIdx = 0;
 				for (int32_t i = 0; i < count; ++i)
 				{
@@ -758,14 +780,26 @@ constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 							// the target was selected, then content validation
 							// failed with "Read Failed (Corrupt game files)".
 							// Read the authoritative size from the exact archived
-							// manifest and change both fields together. If the
-							// archive is absent or malformed, leave both public
-							// values intact; a partial pin is never safe.
-							const auto pinSize =
-							    ManifestStore::archivedInstalledSize(depotId, pin);
-							if (pinSize)
+							// manifest, joining the pre-started fetch when this is a
+							// first import, and change both fields together. If the
+							// fetch or parse fails, leave both public values intact;
+							// a partial pin is never safe.
+							registerPlanTarget(depotId, pin, planDeadline);
+							const auto resolved = ManifestSelection::resolvePinnedPair(
+							    *gidp, *sizep, pin,
+							    remainingPlanBudgetMs(depotId, pin),
+							    [depotId, pin]()
+							    {
+								return ManifestStore::archivedInstalledSize(depotId, pin);
+							    },
+							    [depotId, pin](int waitMs)
+							    {
+								return ManifestFetch::awaitManifestBlobFor(
+								    pin, depotId, waitMs, /*notifyOnTimeout=*/false);
+							    });
+							if (resolved.pinned)
 							{
-								if (*gidp != pin || *sizep != *pinSize)
+								if (*gidp != resolved.gid || *sizep != resolved.size)
 								{
 									g_pLog->info(
 									    "ManifestBind[build]: depot=%u plan gid=%llu "
@@ -775,16 +809,16 @@ constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 									    static_cast<unsigned long long>(*gidp),
 									    static_cast<unsigned long long>(*sizep),
 									    static_cast<unsigned long long>(pin),
-									    static_cast<unsigned long long>(*pinSize));
+									    static_cast<unsigned long long>(resolved.size));
 								}
-								*gidp = pin;
-								*sizep = *pinSize;
+								*gidp = resolved.gid;
+								*sizep = resolved.size;
 							}
 							else
 							{
 								g_pLog->debugOnce(
 								    "ManifestBind[build]: depot=%u pinned gid=%llu "
-								    "has no valid archived size; leaving public "
+								    "was not ready before the shared deadline; leaving public "
 								    "gid=%llu size=%llu intact\n",
 								    depotId,
 								    static_cast<unsigned long long>(pin),

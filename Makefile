@@ -58,6 +58,11 @@ test-manifestpin-patterns:
 	g++ -std=c++20 tools/test_manifestpin_patterns.cpp -o /tmp/test_manifestpin_patterns
 	/tmp/test_manifestpin_patterns "$(STEAMCLIENT)"
 
+test-manifestselection:
+	g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src \
+		tools/test_manifestselection.cpp -o /tmp/test_manifestselection
+	/tmp/test_manifestselection
+
 test-reconcilepin-pattern:
 	g++ -std=c++20 tools/test_reconcilepin_pattern.cpp -o /tmp/test_reconcilepin_pattern
 	/tmp/test_reconcilepin_pattern "$(STEAMCLIENT)"
@@ -184,6 +189,6 @@ release: rebuild zips
 
 .PHONY: audit-libs ronin-module deploy-tsuki-module rollback-tsuki-module \
 	test-manifestpin-patterns test-reconcilepin-pattern \
-	test-depotquarantine-patterns test-steamstub \
+	test-manifestselection test-depotquarantine-patterns test-steamstub \
 	test-firstseen test-slssteam-control build clean clean-libs clean-tools \
 	tools rebuild zips
