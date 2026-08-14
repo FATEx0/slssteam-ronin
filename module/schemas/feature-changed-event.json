@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/feature.changed/1/event",
+  "type":"object","additionalProperties":false,"required":["id","status","observed_at"],
+  "properties":{"id":{"type":"string","minLength":1,"maxLength":128},"status":{"enum":["available","degraded","unavailable"]},"observed_at":{"type":"string","format":"date-time"},"code":{"type":"string","maxLength":128},"detail":{"type":"string","maxLength":4096}}
+}

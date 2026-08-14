@@ -129,9 +129,43 @@
       "response": "schemas/health-evidence-response.json",
       "idempotency": "read-only",
       "effects": ["none"]
+    },
+    {
+      "id":"manifest-pack.inspect","component":"slssteam-control","version":"1",
+      "execution":"immediate","request":"schemas/manifest-pack-inspect-request.json",
+      "response":"schemas/manifest-pack-plan-response.json","idempotency":"read-only","effects":["none"]
+    },
+    {
+      "id":"manifest-pack.install","component":"slssteam-control","version":"1",
+      "execution":"operation","operation_kind":"manifest-pack.install",
+      "operation_policy":{"cancellable":true,"recoverability":"inspectable","concurrency_scope":"resource","max_concurrent":1,"terminal_retention_ms":3600000,"progress_min_interval_ms":100,"event_replay":"latest"},
+      "operation_result":"schemas/manifest-pack-operation-result.json",
+      "request":"schemas/manifest-pack-operation-request.json","response":"schemas/operation-reference-response.json",
+      "idempotency":"idempotency-keyed","effects":["steam-app"]
+    },
+    {
+      "id":"manifest-pack.remove","component":"slssteam-control","version":"1",
+      "execution":"operation","operation_kind":"manifest-pack.remove",
+      "operation_policy":{"cancellable":true,"recoverability":"inspectable","concurrency_scope":"resource","max_concurrent":1,"terminal_retention_ms":3600000,"progress_min_interval_ms":100,"event_replay":"latest"},
+      "operation_result":"schemas/manifest-pack-remove-result.json",
+      "request":"schemas/manifest-pack-remove-request.json","response":"schemas/manifest-pack-remove-response.json",
+      "idempotency":"idempotency-keyed","effects":["steam-app"]
+    },
+    {
+      "id":"manifest-pack.status","component":"slssteam-control","version":"1",
+      "execution":"immediate","request":"schemas/manifest-pack-app-request.json",
+      "response":"schemas/manifest-pack-status-response.json","idempotency":"read-only","effects":["none"]
+    },
+    {
+      "id":"feature.status","component":"slssteam-control","version":"1",
+      "execution":"immediate","request":"schemas/feature-status-request.json",
+      "response":"schemas/feature-status-response.json","idempotency":"read-only","effects":["none"]
     }
   ],
-  "events": [],
+  "events": [
+    {"id":"manifest-pack.changed","component":"slssteam-control","version":"1","payload":"schemas/manifest-pack-changed-event.json"},
+    {"id":"feature.changed","component":"slssteam-control","version":"1","payload":"schemas/feature-changed-event.json"}
+  ],
   "data_imports": [
     {
       "id": "steamdb.history.observation",
@@ -200,6 +234,22 @@
           "freshness_ms": 30000,
           "compatibility_subject": "steam-build"
         }
+      },
+      {
+        "id":"manifest-pinning","component":"steam-hooks","required":false,
+        "evidence":{"carrier":"companion-export","producer":"slssteam-control","export":"health.evidence.get","max_bytes":16384,"freshness_ms":30000,"compatibility_subject":"steam-build"}
+      },
+      {
+        "id":"achievement-schemas","component":"steam-hooks","required":false,
+        "evidence":{"carrier":"companion-export","producer":"slssteam-control","export":"health.evidence.get","max_bytes":16384,"freshness_ms":30000,"compatibility_subject":"steam-build"}
+      },
+      {
+        "id":"compatibility-tools","component":"steam-hooks","required":false,
+        "evidence":{"carrier":"companion-export","producer":"slssteam-control","export":"health.evidence.get","max_bytes":16384,"freshness_ms":30000,"compatibility_subject":"steam-build"}
+      },
+      {
+        "id":"steamstub-ticket","component":"steam-hooks","required":false,
+        "evidence":{"carrier":"companion-export","producer":"slssteam-control","export":"health.evidence.get","max_bytes":16384,"freshness_ms":30000,"compatibility_subject":"steam-build"}
       }
     ]
   },

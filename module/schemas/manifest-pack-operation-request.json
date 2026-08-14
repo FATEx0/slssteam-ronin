@@ -1,0 +1,32 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/manifest-pack.install/1/request",
+  "type":"object","additionalProperties":false,
+  "required":["app_id","plan","plan_digest","user_gesture"],
+  "properties":{
+    "app_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "plan":{"$ref":"#/$defs/plan"},
+    "plan_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+    "user_gesture":{"const":true},
+    "authority":{"$ref":"#/$defs/authority"}
+  },
+  "$defs":{
+    "plan":{"type":"object","additionalProperties":false,
+      "required":["action","app_id","depots"],
+      "properties":{
+        "action":{"enum":["install","remove"]},
+        "app_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+        "build_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+        "depots":{"type":"object","propertyNames":{"pattern":"^[1-9][0-9]{0,9}$"},"additionalProperties":{"type":"string","pattern":"^[1-9][0-9]{0,19}$"}}
+      }},
+    "authority":{"type":"object","additionalProperties":false,
+      "required":["operation_id","confirmation_handle","plan_digest","grant_id","resource_handle"],
+      "properties":{
+        "operation_id":{"type":"string","minLength":1,"maxLength":256},
+        "confirmation_handle":{"type":"string","minLength":1,"maxLength":256},
+        "plan_digest":{"type":"string","pattern":"^[0-9a-f]{64}$"},
+        "grant_id":{"type":"string","minLength":1,"maxLength":256},
+        "resource_handle":{"type":"string","minLength":1,"maxLength":256}
+      }}
+  }
+}

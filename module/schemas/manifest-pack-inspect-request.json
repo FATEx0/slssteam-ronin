@@ -1,0 +1,11 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"ronin://module/slsteam/manifest-pack.inspect/1/request",
+  "type":"object","additionalProperties":false,"required":["app_id","action"],
+  "properties":{
+    "app_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "build_id":{"type":"string","pattern":"^[1-9][0-9]{0,9}$"},
+    "action":{"enum":["install","remove"]}
+  },
+  "allOf":[{"if":{"properties":{"action":{"const":"install"}}},"then":{"required":["build_id"]}}]
+}

@@ -30,6 +30,9 @@
 
 namespace
 {
+std::vector<std::string> g_pendingEvents;
+int g_lastFeatureReady = -1;
+
 struct Json
 {
 	enum Kind { Null, Bool, Number, String, Array, Object } kind = Null;
@@ -1285,6 +1288,93 @@ std::string isoTime()
 	return buffer;
 }
 
+std::string canonicalJson(const Json& value)
+{
+	switch (value.kind)
+	{
+		case Json::Null: return "null";
+		case Json::Bool: return value.boolean ? "true" : "false";
+		case Json::Number: return value.text;
+		case Json::String: return quote(value.text);
+		case Json::Array:
+		{
+			std::string out = "[";
+			for (size_t i = 0; i < value.array.size(); ++i)
+			{
+				if (i) out += ',';
+				out += canonicalJson(value.array[i]);
+			}
+			return out + ']';
+		}
+		case Json::Object:
+		{
+			std::string out = "{";
+			bool first = true;
+			for (const auto& [key, child] : value.object)
+			{
+				if (!first) out += ',';
+				first = false;
+				out += quote(key) + ':' + canonicalJson(child);
+			}
+			return out + '}';
+		}
+	}
+	throw std::runtime_error("invalid JSON kind");
+}
+
+std::string manifestPackStatus(uint32_t appid)
+{
+	const Pins pins = loadPins(configPath());
+	const auto it = pins.find(appid);
+	if (it == pins.end())
+		return "{\"app_id\":" + quote(std::to_string(appid))
+		    + ",\"installed\":false,\"depots\":{}}";
+	return "{\"app_id\":" + quote(std::to_string(appid))
+	    + ",\"installed\":true,\"build_id\":" + quote(std::to_string(it->second.build))
+	    + ",\"depots\":" + depotsJson(it->second.depots) + '}';
+}
+
+std::string healthEvidence();
+
+std::string featureStatus(const Json& payload)
+{
+	const Json evidence = Parser(healthEvidence()).parse();
+	const bool ready = scalar(evidence.get("status")) == "ready";
+	const Json* requested = payload.get("feature");
+	const std::string wanted = requested ? scalar(requested) : "";
+	const std::vector<std::string> features = {
+	    "added-games", "manifest-pinning", "achievement-schemas",
+	    "compatibility-tools", "steamstub-ticket"};
+	if (g_lastFeatureReady != static_cast<int>(ready))
+	{
+		g_lastFeatureReady = static_cast<int>(ready);
+		for (const std::string& feature : features)
+			g_pendingEvents.push_back(
+			    "{\"v\":1,\"t\":\"evt\",\"method\":\"feature.changed\",\"payload\":{\"id\":"
+			    + quote(feature) + ",\"status\":"
+			    + quote(ready ? "available" : "unavailable")
+			    + ",\"observed_at\":" + quote(isoTime())
+			    + (ready ? "" : ",\"code\":\"no-live-evidence\",\"detail\":\"Steam hooks have no current readiness evidence\"")
+			    + "}}" );
+	}
+	std::string out = "{\"features\":[";
+	bool first = true;
+	for (const std::string& feature : features)
+	{
+		if (!wanted.empty() && wanted != feature) continue;
+		if (!first) out += ',';
+		first = false;
+		out += "{\"id\":" + quote(feature) + ",\"status\":"
+		    + quote(ready ? "available" : "unavailable")
+		    + ",\"observed_at\":" + quote(isoTime());
+		if (!ready) out += ",\"code\":\"no-live-evidence\",\"detail\":\"Steam hooks have no current readiness evidence\"";
+		out += '}';
+	}
+	return out + "]}";
+}
+
+std::string dispatch(const std::string& method, const Json& payload);
+
 std::string healthEvidence()
 {
 	const char* configured = std::getenv("TSUKI_RONIN_RUNTIME_DIR");
@@ -1336,6 +1426,101 @@ std::string healthEvidence()
 
 std::string dispatch(const std::string& method, const Json& payload)
 {
+	if (method == "feature.status") return featureStatus(payload);
+	if (method == "manifest-pack.status")
+		return manifestPackStatus(decimal32(payload.get("app_id"), "app id"));
+	if (method == "manifest-pack.inspect")
+	{
+		const uint32_t appid = decimal32(payload.get("app_id"), "app id");
+		const std::string action = requiredString(payload.get("action"), "action");
+		std::string plan;
+		if (action == "install")
+		{
+			const uint32_t build = decimal32(payload.get("build_id"), "build id");
+			const Json request = Parser("{\"appid\":" + quote(std::to_string(appid))
+			    + ",\"build_id\":" + quote(std::to_string(build)) + '}').parse();
+			const Json resolved = Parser(dispatch("pins.history.resolve", request)).parse();
+			const Json* depots = resolved.get("depots");
+			if (!depots || depots->kind != Json::Object)
+				throw std::runtime_error("resolved manifest pack has no depots");
+			plan = "{\"action\":\"install\",\"app_id\":"
+			    + quote(std::to_string(appid)) + ",\"build_id\":"
+			    + quote(std::to_string(build)) + ",\"depots\":"
+			    + canonicalJson(*depots) + '}';
+		}
+		else if (action == "remove")
+		{
+			const Json status = Parser(manifestPackStatus(appid)).parse();
+			const Json* depots = status.get("depots");
+			plan = "{\"action\":\"remove\",\"app_id\":"
+			    + quote(std::to_string(appid)) + ",\"depots\":"
+			    + (depots ? canonicalJson(*depots) : "{}") + '}';
+		}
+		else throw std::runtime_error("unsupported manifest-pack action");
+		const std::string digest = sha256(plan);
+		return "{\"plan\":" + plan + ",\"plan_digest\":" + quote(digest)
+		    + ",\"summary\":" + quote(
+		        action + " manifest pack for Steam app " + std::to_string(appid))
+		    + ",\"effects\":[" + quote("Steam app " + std::to_string(appid)) + "]}";
+	}
+	if (method == "manifest-pack.install" || method == "manifest-pack.remove")
+	{
+		const uint32_t appid = decimal32(payload.get("app_id"), "app id");
+		const Json* plan = payload.get("plan");
+		const Json* authority = payload.get("authority");
+		if (!plan || plan->kind != Json::Object || !authority || authority->kind != Json::Object)
+			throw std::runtime_error("host operation authority is required");
+		for (const char* field : {"operation_id", "confirmation_handle", "grant_id", "resource_handle"})
+			(void)requiredString(authority->get(field), field);
+		const std::string digest = requiredString(payload.get("plan_digest"), "plan digest");
+		if (requiredString(authority->get("plan_digest"), "authority plan digest") != digest
+		    || sha256(canonicalJson(*plan)) != digest)
+			throw std::runtime_error("confirmed manifest-pack plan changed");
+		const std::string action = requiredString(plan->get("action"), "plan action");
+		const std::string expected = method == "manifest-pack.install" ? "install" : "remove";
+		if (action != expected || decimal32(plan->get("app_id"), "plan app id") != appid)
+			throw std::runtime_error("manifest-pack plan does not match operation");
+
+		const auto path = configPath();
+		Pins pins = loadPins(path);
+		const Pins before = pins;
+		uint32_t build = 0;
+		try
+		{
+			if (action == "install")
+			{
+				build = decimal32(plan->get("build_id"), "plan build id");
+				AppPin pin; pin.locked = true; pin.build = build;
+				pin.depots = depotMap(plan->get("depots"), "plan depots", false);
+				if (pin.depots.empty()) throw std::runtime_error("manifest pack has no depots");
+				pins[appid] = std::move(pin);
+			}
+			else pins.erase(appid);
+			savePins(path, pins);
+			const Pins verified = loadPins(path);
+			const bool present = verified.contains(appid);
+			if ((action == "install") != present
+			    || (present && (verified.at(appid).build != build
+			      || verified.at(appid).depots != pins.at(appid).depots)))
+				throw std::runtime_error("manifest-pack verification failed");
+		}
+		catch (...)
+		{
+			try { savePins(path, before); } catch (...) {}
+			throw;
+		}
+		const std::map<uint32_t, uint64_t> depots =
+		    action == "install" ? pins.at(appid).depots : std::map<uint32_t, uint64_t>{};
+		g_pendingEvents.push_back("{\"v\":1,\"t\":\"evt\",\"method\":\"manifest-pack.changed\",\"payload\":{\"action\":"
+		    + quote(action) + ",\"app_id\":" + quote(std::to_string(appid))
+		    + (build ? ",\"build_id\":" + quote(std::to_string(build)) : "")
+		    + ",\"observed_at\":" + quote(isoTime()) + "}}" );
+		return "{\"verified\":true,\"action\":" + quote(action)
+		    + ",\"app_id\":" + quote(std::to_string(appid))
+		    + (build ? ",\"build_id\":" + quote(std::to_string(build)) : "")
+		    + ",\"depots\":" + depotsJson(depots)
+		    + ",\"rollback_available\":true}";
+	}
 	if (method == "settings.get") return settingsState(readFile(configPath()));
 	if (method == "settings.set") return updateSettings(payload);
 	if (method == "health.evidence.get") return healthEvidence();
@@ -1587,6 +1772,8 @@ int main()
 					const Json* payload = message.get("payload");
 					sendFrame(fd, response(message, true,
 					    dispatch(method->text, payload ? *payload : empty)));
+					for (const std::string& event : g_pendingEvents) sendFrame(fd, event);
+					g_pendingEvents.clear();
 				}
 				catch (const std::exception& error)
 				{

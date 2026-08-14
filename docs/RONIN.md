@@ -165,24 +165,27 @@ package-owned view even when the restart-applied Steam hooks are disabled.
 Ronin 3.0 declares it as an `installed` management component independently of
 the `enabled` Steam-hook component. A connected `slssteam-control` therefore
 must not make disabled Steam-hook functionality appear enabled or running.
-Tsuki support for this 3.0 lifecycle and honest state aggregation remains a
-host rollout gate, not an implicit package policy.
+Tsuki now reports the resident management plane separately from functional
+hook state and derives each declared feature's availability from live hook
+evidence.
 
-## Deferred Ronin 3 surfaces
+## Ronin 3 operation and feature surfaces
 
-The current beta migration does not yet publish the producer-owned
-`manifest-pack.inspect/install/remove/status` exports or
-`manifest-pack.changed` event required for LuaTools integration. LuaTools must
-not write SLSsteam's private pins, configuration, manifest store or
-`stplug-in` files as a substitute. These exports remain gated on the Ronin
-transaction/grant host implementation so install/remove can bind confirmation,
-staging, verification and rollback to a concrete Steam target.
+The package publishes producer-owned
+`manifest-pack.inspect/install/remove/status` exports and the
+`manifest-pack.changed` event for consumers such as LuaTools. Install and
+remove are confirmed Ronin operations: Tsuki verifies the canonical plan
+digest and current user gesture, issues an operation- and app-scoped opaque
+Steam-target grant, retains the terminal result, and revokes the grant when the
+operation ends. The control backend atomically commits the pin set, reads it
+back for verification, and restores the preceding file if commit verification
+fails. Consumers must use this API rather than write SLSsteam's private pins,
+configuration, manifest store or `stplug-in` files.
 
-Feature transitions are currently observable through
-`health.evidence.get`. A standardized `feature.status` query and
-`feature.changed` notification remain deferred to Tsuki's Ronin 3 evidence
-aggregation/event implementation; the package must not invent a second,
-conflicting feature-state authority.
+`feature.status` and `feature.changed` use the same live hook readiness record
+as `health.evidence.get`; Tsuki also aggregates the declared evidence into its
+generic module feature state and bounded change replay. There is no separate
+package-local feature-state authority.
 
 ## SteamStub handling
 
@@ -302,12 +305,17 @@ unsafe. The end-to-end manifest-pinning acceptance test is authoritative.
       page; Tsuki contributes only generic component/view hosting.
 - [x] Replace the manually maintained Tsuki compatibility copy with an explicit
       validated package deployment operation and one rollback revision.
-- [ ] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
+- [x] Run isolated tests plus a controlled Tsuki/Steam A/B validation.
 
 The retained native feature transplant was completed and compiled on
-2026-07-26. Its offline regression inventory passes. The final checkbox remains
-open because the controlled live A/B validation intentionally mutates Steam
-state and requires separate current-user authorization. The canonical package
-now lives in this repository. Tsuki's `modules/slsteam/` tree is a deployed
-compatibility copy until external package discovery or installation replaces
-that staging step.
+2026-07-26. Its offline regression inventory passes. Controlled live acceptance
+on 2026-07-27 exercised a pinned downgrade and return to the public build with
+byte-count and mounted-GID evidence, persistence across restart, and restoration
+of the original user state. A fresh post-upstream-integration acceptance run on
+2026-08-14 validated the Ronin 3 package, reached the Steam UI, attached both
+Tsuki contexts, connected the package control companion, resolved the current
+Steam patterns, exercised ReconcilePin, PackagePatch and parental rewriting,
+and completed a two-minute SLS-only soak without a crash or failed hook. The
+canonical package lives in this repository. Tsuki's `modules/slsteam/` tree is
+a deployed compatibility copy until external package discovery or installation
+replaces that staging step.

@@ -355,6 +355,99 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
             "800": "200", "900": "900", "902": "990",
         }
 
+        send(peer, {
+            "v": 1, "t": "req", "id": "feature-status",
+            "method": "feature.status", "payload": {},
+        })
+        features = receive(peer)["payload"]["features"]
+        assert {item["id"] for item in features} == {
+            "added-games", "manifest-pinning", "achievement-schemas",
+            "compatibility-tools", "steamstub-ticket",
+        }
+        assert all(item["status"] == "available" for item in features)
+        feature_events = [receive(peer) for _ in features]
+        assert all(item["t"] == "evt" for item in feature_events)
+        assert all(item["method"] == "feature.changed" for item in feature_events)
+        assert {item["payload"]["id"] for item in feature_events} == {
+            item["id"] for item in features
+        }
+
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-inspect",
+            "method": "manifest-pack.inspect",
+            "payload": {"app_id": "600", "build_id": "9", "action": "install"},
+        })
+        inspected = receive(peer)["payload"]
+        assert inspected["plan"] == {
+            "action": "install", "app_id": "600", "build_id": "9",
+            "depots": {"800": "200", "900": "900", "902": "990"},
+        }
+        authority = {
+            "operation_id": "op-install", "confirmation_handle": "confirm-install",
+            "plan_digest": inspected["plan_digest"], "grant_id": "grant-install",
+            "resource_handle": "resource-install",
+        }
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-tampered",
+            "method": "manifest-pack.install",
+            "payload": {
+                "app_id": "600", "plan": inspected["plan"],
+                "plan_digest": "0" * 64, "user_gesture": True,
+                "authority": authority,
+            },
+        })
+        assert "plan changed" in receive(peer)["error"]["message"]
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-install",
+            "method": "manifest-pack.install",
+            "payload": {
+                "app_id": "600", "plan": inspected["plan"],
+                "plan_digest": inspected["plan_digest"], "user_gesture": True,
+                "authority": authority,
+            },
+        })
+        installed = receive(peer)["payload"]
+        assert installed["verified"] is True
+        assert installed["depots"] == inspected["plan"]["depots"]
+        assert receive(peer)["method"] == "manifest-pack.changed"
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-status",
+            "method": "manifest-pack.status", "payload": {"app_id": "600"},
+        })
+        assert receive(peer)["payload"]["build_id"] == "9"
+
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-remove-inspect",
+            "method": "manifest-pack.inspect",
+            "payload": {"app_id": "600", "action": "remove"},
+        })
+        removal = receive(peer)["payload"]
+        remove_authority = {
+            "operation_id": "op-remove", "confirmation_handle": "confirm-remove",
+            "plan_digest": removal["plan_digest"], "grant_id": "grant-remove",
+            "resource_handle": "resource-remove",
+        }
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-remove",
+            "method": "manifest-pack.remove",
+            "payload": {
+                "app_id": "600", "plan": removal["plan"],
+                "plan_digest": removal["plan_digest"], "user_gesture": True,
+                "authority": remove_authority,
+            },
+        })
+        removed = receive(peer)["payload"]
+        assert removed["verified"] is True
+        assert removed["action"] == "remove"
+        assert receive(peer)["method"] == "manifest-pack.changed"
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-status-removed",
+            "method": "manifest-pack.status", "payload": {"app_id": "600"},
+        })
+        assert receive(peer)["payload"] == {
+            "app_id": "600", "installed": False, "depots": {},
+        }
+
         valid_composite_cache = cache.read_bytes()
         incomplete_shared_history = json.loads(json.dumps(composite))
         incomplete_shared_history["shared_depot_histories"][0]["manifests"] = [
