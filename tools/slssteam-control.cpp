@@ -176,6 +176,13 @@ struct AppPin
 	std::map<uint32_t, uint64_t> depots;
 };
 using Pins = std::map<uint32_t, AppPin>;
+struct PendingManifestPack
+{
+	std::string path;
+	Pins before;
+	std::string event;
+};
+std::map<std::string, PendingManifestPack> g_pendingManifestPacks;
 
 struct ManagedGame
 {
@@ -1472,6 +1479,30 @@ std::string dispatch(const std::string& method, const Json& payload)
 			throw std::runtime_error("host operation authority is required");
 		for (const char* field : {"operation_id", "confirmation_handle", "grant_id", "resource_handle"})
 			(void)requiredString(authority->get(field), field);
+		const std::string operationId = requiredString(
+		    authority->get("operation_id"), "operation id");
+		const Json* phaseValue = authority->get("phase");
+		const std::string phase = phaseValue ? requiredString(phaseValue, "authority phase") : "commit";
+		if (phase == "rollback")
+		{
+			const auto pending = g_pendingManifestPacks.find(operationId);
+			if (pending == g_pendingManifestPacks.end())
+				throw std::runtime_error("manifest-pack rollback state is unavailable");
+			savePins(pending->second.path, pending->second.before);
+			g_pendingManifestPacks.erase(pending);
+			return "{\"verified\":true}";
+		}
+		if (phase == "finalize")
+		{
+			const auto pending = g_pendingManifestPacks.find(operationId);
+			if (pending == g_pendingManifestPacks.end())
+				throw std::runtime_error("manifest-pack finalize state is unavailable");
+			if (!pending->second.event.empty())
+				g_pendingEvents.push_back(pending->second.event);
+			g_pendingManifestPacks.erase(pending);
+			return "{\"verified\":true}";
+		}
+		if (phase != "commit") throw std::runtime_error("invalid manifest-pack authority phase");
 		const std::string digest = requiredString(payload.get("plan_digest"), "plan digest");
 		if (requiredString(authority->get("plan_digest"), "authority plan digest") != digest
 		    || sha256(canonicalJson(*plan)) != digest)
@@ -1484,6 +1515,9 @@ std::string dispatch(const std::string& method, const Json& payload)
 		const auto path = configPath();
 		Pins pins = loadPins(path);
 		const Pins before = pins;
+		if (g_pendingManifestPacks.contains(operationId))
+			throw std::runtime_error("manifest-pack operation id is already active");
+		g_pendingManifestPacks.emplace(operationId, PendingManifestPack{path, before, {}});
 		uint32_t build = 0;
 		try
 		{
@@ -1507,14 +1541,16 @@ std::string dispatch(const std::string& method, const Json& payload)
 		catch (...)
 		{
 			try { savePins(path, before); } catch (...) {}
+			g_pendingManifestPacks.erase(operationId);
 			throw;
 		}
 		const std::map<uint32_t, uint64_t> depots =
 		    action == "install" ? pins.at(appid).depots : std::map<uint32_t, uint64_t>{};
-		g_pendingEvents.push_back("{\"v\":1,\"t\":\"evt\",\"method\":\"manifest-pack.changed\",\"payload\":{\"action\":"
+		g_pendingManifestPacks.at(operationId).event =
+		    "{\"v\":1,\"t\":\"evt\",\"method\":\"manifest-pack.changed\",\"payload\":{\"action\":"
 		    + quote(action) + ",\"app_id\":" + quote(std::to_string(appid))
 		    + (build ? ",\"build_id\":" + quote(std::to_string(build)) : "")
-		    + ",\"observed_at\":" + quote(isoTime()) + "}}" );
+		    + ",\"observed_at\":" + quote(isoTime()) + "}}";
 		return "{\"verified\":true,\"action\":" + quote(action)
 		    + ",\"app_id\":" + quote(std::to_string(appid))
 		    + (build ? ",\"build_id\":" + quote(std::to_string(build)) : "")

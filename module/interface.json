@@ -36,6 +36,16 @@
       "response": "ronin://host/tsuki.steam.app.validate/1/response",
       "idempotency": "idempotency-keyed",
       "effects": ["steam-metadata"]
+    },
+    {
+      "id": "tsuki.operation.get",
+      "version": "1",
+      "required": true,
+      "execution": "immediate",
+      "request": "ronin://host/tsuki.operation.get/1/request",
+      "response": "ronin://host/tsuki.operation.get/1/response",
+      "idempotency": "read-only",
+      "effects": ["none"]
     }
   ],
   "event_imports": [],

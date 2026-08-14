@@ -409,6 +409,17 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
         installed = receive(peer)["payload"]
         assert installed["verified"] is True
         assert installed["depots"] == inspected["plan"]["depots"]
+        finalized_authority = dict(authority, phase="finalize")
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-install-finalize",
+            "method": "manifest-pack.install",
+            "payload": {
+                "app_id": "600", "plan": inspected["plan"],
+                "plan_digest": inspected["plan_digest"], "user_gesture": True,
+                "authority": finalized_authority,
+            },
+        })
+        assert receive(peer)["payload"]["verified"] is True
         assert receive(peer)["method"] == "manifest-pack.changed"
         send(peer, {
             "v": 1, "t": "req", "id": "pack-status",
@@ -439,6 +450,17 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
         removed = receive(peer)["payload"]
         assert removed["verified"] is True
         assert removed["action"] == "remove"
+        remove_finalize = dict(remove_authority, phase="finalize")
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-remove-finalize",
+            "method": "manifest-pack.remove",
+            "payload": {
+                "app_id": "600", "plan": removal["plan"],
+                "plan_digest": removal["plan_digest"], "user_gesture": True,
+                "authority": remove_finalize,
+            },
+        })
+        assert receive(peer)["payload"]["verified"] is True
         assert receive(peer)["method"] == "manifest-pack.changed"
         send(peer, {
             "v": 1, "t": "req", "id": "pack-status-removed",

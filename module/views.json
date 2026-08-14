@@ -13,12 +13,13 @@
       },
       "imports": [
         "pins.list",
-        "pins.set",
-        "pins.clear",
         "pins.history.import",
         "pins.history.list",
-        "pins.history.resolve",
-        "tsuki.steam.app.validate"
+        "manifest-pack.inspect",
+        "manifest-pack.install",
+        "manifest-pack.remove",
+        "manifest-pack.status",
+        "tsuki.operation.get"
       ]
     }
   ]

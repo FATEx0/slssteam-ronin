@@ -102,34 +102,47 @@ function importHistory(context, game, observation, rawText, file, gestureToken) 
   });
 }
 
-function validateApp(context, appid) {
-  return context.call("tsuki.steam.app.validate", { app_id: String(appid) });
+function waitOperation(context, reference) {
+  return context.call("tsuki.operation.get", {
+    operation_id: String(reference.operation_id)
+  }).then(function (state) {
+    if (state.state === "succeeded") return state.result || {};
+    if (state.state === "failed" || state.state === "cancelled") {
+      throw new Error(state.error && (state.error.detail || state.error.code) ||
+        "Manifest operation failed.");
+    }
+    return new Promise(function (resolve) { setTimeout(resolve, 200); })
+      .then(function () { return waitOperation(context, reference); });
+  });
 }
 
 function applyBuild(context, game, build, status, button) {
+  var gesture;
+  try { gesture = context.beginOperation("manifest-pack.install"); }
+  catch (error) {
+    status.textContent = String(error && error.message || error);
+    return;
+  }
   button.disabled = true;
   status.className = "message working";
-  status.textContent = "Resolving build " + build.build_id + "\u2026";
-  context.call("pins.history.resolve", {
-    appid: String(game.appid),
-    build_id: String(build.build_id)
-  }).then(function (resolved) {
-    status.textContent = "Saving build lock\u2026";
-    return context.call("pins.set", {
-      appid: String(game.appid),
-      build_id: String(build.build_id),
-      locked: true,
-      depots: resolved.depots || {}
-    });
-  }).then(function () {
-    status.textContent = "Starting Steam validation\u2026";
-    return new Promise(function (resolve) { setTimeout(resolve, 1000); });
-  }).then(function () {
-    return validateApp(context, game.appid);
+  status.textContent = "Inspecting build " + build.build_id + "\u2026";
+  context.call("manifest-pack.inspect", {
+    app_id: String(game.appid),
+    build_id: String(build.build_id),
+    action: "install"
+  }).then(function (inspected) {
+    status.textContent = "Confirming and applying manifest pack\u2026";
+    return context.operation("manifest-pack.install", {
+      app_id: String(game.appid),
+      plan: inspected.plan,
+      plan_digest: inspected.plan_digest
+    }, gesture);
+  }).then(function (reference) {
+    return waitOperation(context, reference);
   }).then(function () {
     status.className = "message success";
     status.textContent = "Build " + build.build_id +
-      " saved. Steam is validating and will download the required files.";
+      " confirmed. Steam is validating and will download the required files.";
     return context.call("pins.list", {});
   }).then(function (state) {
     currentState = state;
@@ -142,17 +155,30 @@ function applyBuild(context, game, build, status, button) {
 }
 
 function applyLatest(context, game, status, button) {
+  var gesture;
+  try { gesture = context.beginOperation("manifest-pack.remove"); }
+  catch (error) {
+    status.textContent = String(error && error.message || error);
+    return;
+  }
   button.disabled = true;
   status.className = "message working";
-  status.textContent = "Removing build lock\u2026";
-  context.call("pins.clear", { appid: String(game.appid) }).then(function () {
-    status.textContent = "Starting Steam validation\u2026";
-    return new Promise(function (resolve) { setTimeout(resolve, 1000); });
-  }).then(function () {
-    return validateApp(context, game.appid);
+  status.textContent = "Inspecting current manifest pack\u2026";
+  context.call("manifest-pack.inspect", {
+    app_id: String(game.appid),
+    action: "remove"
+  }).then(function (inspected) {
+    status.textContent = "Confirming Live build\u2026";
+    return context.operation("manifest-pack.remove", {
+      app_id: String(game.appid),
+      plan: inspected.plan,
+      plan_digest: inspected.plan_digest
+    }, gesture);
+  }).then(function (reference) {
+    return waitOperation(context, reference);
   }).then(function () {
     status.className = "message success";
-    status.textContent = "Live build selected. Steam is validating and will update the files.";
+    status.textContent = "Live build confirmed. Steam is validating and will update the files.";
     return context.call("pins.list", {});
   }).then(function (state) {
     currentState = state;
