@@ -1102,6 +1102,7 @@ const std::vector<Setting>& settings()
 		{"DisableCloud", Json::Bool, "true"},
 		{"Achievements", Json::Bool, "true"},
 		{"DisableUpdates", Json::Bool, "true"},
+		{"FakeName", Json::String, "\"\""},
 		{"FakeEmail", Json::String, "\"\""},
 		{"FakeWalletBalance", Json::Number, "0"},
 		{"AutoFilterList", Json::Bool, "true"},

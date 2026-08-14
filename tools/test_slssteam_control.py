@@ -69,6 +69,7 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
         state = receive(peer)["payload"]
         assert state["values"]["PlayNotOwnedGames"] is True
         assert state["values"]["DisableCloud"] is True
+        assert state["values"]["FakeName"] == ""
         send(peer, {
             "v": 1, "t": "req", "id": "settings-2",
             "method": "settings.set",
@@ -76,6 +77,7 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
                 "base_revision": state["revision"],
                 "values": {
                     "DisableCloud": False,
+                    "FakeName": "Ronin Test",
                     "FakeEmail": "test@example.invalid",
                     "AchievementOwners": {"600": "76561198028121353"},
                 },
@@ -84,7 +86,9 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
         updated = receive(peer)["payload"]
         assert updated["revision"] != state["revision"]
         assert updated["values"]["DisableCloud"] is False
+        assert updated["values"]["FakeName"] == "Ronin Test"
         assert updated["values"]["AchievementOwners"]["600"] == "76561198028121353"
+        assert 'FakeName: "Ronin Test"' in config.read_text()
         assert "UnknownFutureKey: keep-me" in config.read_text()
         send(peer, {
             "v": 1, "t": "req", "id": "settings-stale",

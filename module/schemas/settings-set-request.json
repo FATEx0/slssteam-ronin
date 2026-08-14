@@ -19,6 +19,7 @@
         "DisableCloud":{"type":"boolean"},
         "Achievements":{"type":"boolean"},
         "DisableUpdates":{"type":"boolean"},
+        "FakeName":{"type":"string","maxLength":4096},
         "FakeEmail":{"type":"string","maxLength":4096},
         "FakeWalletBalance":{"type":"integer","minimum":0,"maximum":2147483647},
         "AutoFilterList":{"type":"boolean"},

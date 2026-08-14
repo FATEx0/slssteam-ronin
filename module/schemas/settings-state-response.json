@@ -10,7 +10,7 @@
       "required":[
         "PlayNotOwnedGames","DisableFamilyShareLock","DisableParentalRestrictions",
         "Notifications","NotifyInit","DisableCloud","Achievements","DisableUpdates",
-        "FakeEmail","FakeWalletBalance","AutoFilterList","UseWhitelist",
+        "FakeName","FakeEmail","FakeWalletBalance","AutoFilterList","UseWhitelist",
         "WarnHashMissmatch","API","ExtendedLogging","LogLevel","MaxSchemaTries",
         "DumpClientInterfaces","AchievementOwnerId","AchievementOwners"
       ]

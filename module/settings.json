@@ -189,6 +189,23 @@
       }
     },
     {
+      "key": "FakeName",
+      "type": "string",
+      "default": "",
+      "tier": "basic",
+      "label": "Fake persona name",
+      "description": "Shows a cosmetic persona name in the Steam client.",
+      "apply": {
+        "mode": "steam-restart",
+        "target": "steam-hooks"
+      },
+      "ui": {
+        "widget": "text",
+        "group": "fake-info",
+        "order": 0
+      }
+    },
+    {
       "key": "FakeEmail",
       "type": "string",
       "default": "",
@@ -202,7 +219,7 @@
       "ui": {
         "widget": "text",
         "group": "fake-info",
-        "order": 0
+        "order": 10
       }
     },
     {
@@ -219,7 +236,7 @@
       "ui": {
         "widget": "number",
         "group": "fake-info",
-        "order": 10
+        "order": 20
       },
       "minimum": 0,
       "maximum": 2147483647
