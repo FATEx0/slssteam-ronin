@@ -434,10 +434,38 @@ with tempfile.TemporaryDirectory(prefix="slssteam-control-") as temporary:
         })
         removal = receive(peer)["payload"]
         remove_authority = {
-            "operation_id": "op-remove", "confirmation_handle": "confirm-remove",
+            "operation_id": "op-remove-rollback",
+            "confirmation_handle": "confirm-remove-rollback",
             "plan_digest": removal["plan_digest"], "grant_id": "grant-remove",
             "resource_handle": "resource-remove",
         }
+        remove_payload = {
+            "app_id": "600", "plan": removal["plan"],
+            "plan_digest": removal["plan_digest"], "user_gesture": True,
+            "authority": remove_authority,
+        }
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-remove-rollback-commit",
+            "method": "manifest-pack.remove", "payload": remove_payload,
+        })
+        assert receive(peer)["payload"]["verified"] is True
+        rollback_payload = dict(remove_payload)
+        rollback_payload["authority"] = dict(remove_authority, phase="rollback")
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-remove-rollback",
+            "method": "manifest-pack.remove", "payload": rollback_payload,
+        })
+        assert receive(peer)["payload"]["verified"] is True
+        send(peer, {
+            "v": 1, "t": "req", "id": "pack-status-after-rollback",
+            "method": "manifest-pack.status", "payload": {"app_id": "600"},
+        })
+        assert receive(peer)["payload"]["build_id"] == "9"
+
+        remove_authority = dict(
+            remove_authority,
+            operation_id="op-remove", confirmation_handle="confirm-remove",
+        )
         send(peer, {
             "v": 1, "t": "req", "id": "pack-remove",
             "method": "manifest-pack.remove",

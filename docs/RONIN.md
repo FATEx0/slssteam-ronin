@@ -177,15 +177,27 @@ The package publishes producer-owned
 remove are confirmed Ronin operations: Tsuki verifies the canonical plan
 digest and current user gesture, issues an operation- and app-scoped opaque
 Steam-target grant, retains the terminal result, and revokes the grant when the
-operation ends. The control backend atomically commits the pin set, reads it
-back for verification, and restores the preceding file if commit verification
-fails. Consumers must use this API rather than write SLSsteam's private pins,
-configuration, manifest store or `stplug-in` files.
+operation ends. The control backend atomically commits the pin set and reads it
+back for verification; Tsuki then schedules Steam validation before finalizing
+the operation and publishing its change event. If that concrete effect cannot
+be scheduled, the backend restores its pre-operation snapshot and no change
+event is published. Consumers must use this API rather than write SLSsteam's
+private pins, configuration, manifest store or `stplug-in` files.
 
 `feature.status` and `feature.changed` use the same live hook readiness record
 as `health.evidence.get`; Tsuki also aggregates the declared evidence into its
 generic module feature state and bounded change replay. There is no separate
 package-local feature-state authority.
+
+Live acceptance on 2026-08-14 used the deployed package and Tsuki's injected
+RPC bridge, not the standalone control protocol. For app 2723430, a confirmed
+operation moved depot 2723431 from GID 4105671086490885582 to
+6405376336623177784. Steam downloaded 288,005,168 bytes, staged 1,123,934,467
+bytes and committed the target GID. A second confirmed operation returned the
+depot to GID 4105671086490885582; Steam downloaded 244,247,888 bytes, staged
+1,125,660,475 bytes and completed without an update error. The original
+SLSsteam configuration was byte-identical after restoration, and the app
+manifest again named the original build and mounted depot GIDs.
 
 ## SteamStub handling
 
